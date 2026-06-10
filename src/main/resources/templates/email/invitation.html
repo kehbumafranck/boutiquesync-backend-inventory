@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Invitation BoutiqueSync</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .header { background-color: #4F46E5; padding: 32px; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 24px; }
+        .body { padding: 32px; color: #333333; }
+        .body p { line-height: 1.6; margin: 0 0 16px; }
+        .btn { display: inline-block; margin: 24px 0; padding: 14px 32px; background-color: #4F46E5; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
+        .expiry { background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 12px 16px; border-radius: 4px; font-size: 14px; color: #92400E; }
+        .footer { padding: 24px 32px; background-color: #f9f9f9; text-align: center; font-size: 12px; color: #999999; }
+        .link-fallback { word-break: break-all; font-size: 12px; color: #666666; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <div class="header">
+        <h1>BoutiqueSync</h1>
+    </div>
+
+    <div class="body">
+        <p>Bonjour,</p>
+        <p>
+            Vous avez été invité(e) à rejoindre <strong>BoutiqueSync</strong> en tant qu'employé(e).
+            Cliquez sur le bouton ci-dessous pour créer votre compte et compléter vos informations.
+        </p>
+
+        <div style="text-align: center;">
+            <a th:href="${invitationLink}" class="btn">Créer mon compte</a>
+        </div>
+
+        <div class="expiry">
+            ⏳ Ce lien est valable pendant <strong th:text="${expiryHours} + ' heure(s)'">24 heure(s)</strong>.
+            Passé ce délai, contactez votre administrateur pour recevoir un nouveau lien.
+        </div>
+
+        <p style="margin-top: 24px;">
+            Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :
+        </p>
+        <p class="link-fallback" th:text="${invitationLink}"></p>
+    </div>
+
+    <div class="footer">
+        <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+        <p>&copy; 2024 BoutiqueSync. Tous droits réservés.</p>
+    </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,35 @@
+services:
+  boutiquesync-backend:
+    image: boutiquesync-backend:latest
+    container_name: boutiquesync-backend
+    ports:
+      - "8085:8085"           # port_hote:port_container
+    environment:
+      # Spring
+      SPRING_PROFILES_ACTIVE: prod
+
+      # MongoDB — ton collègue mettra sa propre URI
+      MONGODB_URI: ${MONGODB_URI}
+
+      # Sécurité
+      JWT_SECRET: ${JWT_SECRET}
+      TOTP_KEY: ${TOTP_KEY}
+
+      # Mail
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME}
+
+      # Invitation & Frontend
+      INVITATION_EXPIRY_HOURS: ${INVITATION_EXPIRY_HOURS:-24}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
+
+      # Boutique
+      SHOP_NAME: ${SHOP_NAME}
+      SHOP_ADDRESS: ${SHOP_ADDRESS}
+      SHOP_PHONE: ${SHOP_PHONE}
+      SHOP_EMAIL: ${SHOP_EMAIL}
+
+    restart: unless-stopped

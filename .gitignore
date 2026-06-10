@@ -1,0 +1,33 @@
+# Build
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Environment & Secrets - NE JAMAIS COMMITER
+.env
+.env.*
+!.env.example
+
+# Invoices generated
+invoices/
+
+# Maven
+*.jar
+*.war
+*.ear

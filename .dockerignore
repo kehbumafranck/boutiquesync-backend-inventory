@@ -1,0 +1,46 @@
+# ============================================================
+# Dossier de compilation Maven
+# → Docker recompile lui-même dans le Dockerfile (mvn package)
+#   Inclure target/ alourdirait inutilement le contexte d'envoi
+# ============================================================
+target/
+
+# ============================================================
+# Secrets — ne JAMAIS inclure dans une image Docker
+# L'image peut être partagée, publiée, inspectée par n'importe qui
+# Les secrets passent via les variables d'environnement au runtime
+# ============================================================
+.env
+.env.*
+
+# ============================================================
+# Git — historique de code inutile dans l'image
+# ============================================================
+.git/
+.gitignore
+
+# ============================================================
+# Logs générés localement — inutiles dans l'image
+# ============================================================
+logs/
+*.log
+
+# ============================================================
+# Fichiers Docker eux-mêmes — pas besoin de les embarquer
+# ============================================================
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# ============================================================
+# Documentation — inutile dans l'image
+# ============================================================
+*.md
+README*
+BUGFIX*
+# ============================================================
+# IDE — fichiers de configuration IntelliJ / VSCode
+# ============================================================
+.idea/
+*.iml
+.vscode/
