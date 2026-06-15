@@ -3,6 +3,7 @@ package com.boutiquesync.controller;
 import com.boutiquesync.dto.ApiResponse;
 import com.boutiquesync.dto.auth.*;
 import com.boutiquesync.model.User;
+import com.boutiquesync.security.JwtTokenProvider;
 import com.boutiquesync.security.UserPrincipal;
 import com.boutiquesync.service.AuthService;
 import com.boutiquesync.service.TotpService;
@@ -10,8 +11,10 @@ import com.boutiquesync.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,7 +25,8 @@ import java.util.Map;
 
 /**
  * Contrôleur d'authentification.
- * Gère le login, le 2FA, le refresh token, le logout et la gestion des mots de passe.
+ * Les tokens JWT (access + refresh) sont désormais transmis via des
+ * cookies HttpOnly, plus dans le corps JSON des réponses.
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -33,72 +37,102 @@ public class AuthController {
     private final AuthService authService;
     private final TotpService totpService;
     private final UserService userService;
+    private final JwtTokenProvider jwtTokenProvider;
 
     /**
      * Enregistrement du premier administrateur.
-     * Endpoint public - utilisable une seule fois au démarrage de l'application.
-     * Retourne les tokens JWT directement (authentification automatique).
+     * Pose les cookies access/refresh et retourne les infos utilisateur (sans tokens).
      */
     @PostMapping("/register-admin")
-    @Operation(summary = "Enregistrer l'administrateur", description = "Crée le premier compte administrateur (utilisable qu'une seule fois). Retourne JWT directement.")
+    @Operation(summary = "Enregistrer l'administrateur", description = "Crée le premier compte administrateur. Pose les cookies JWT.")
     public ResponseEntity<ApiResponse<LoginResponse>> registerAdmin(
             @Valid @RequestBody RegisterAdminRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
         String ipAddress = getIpAddress(httpRequest);
         LoginResponse response = authService.registerAdmin(request, ipAddress);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Admin enregistré avec succès", response));
+
+        setAuthCookies(httpResponse, response);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Admin enregistré avec succès", response.toSafeResponse()));
     }
 
     /**
      * Connexion avec email et mot de passe.
-     * Retourne les tokens JWT ou un token temporaire si 2FA activé.
+     * Si le 2FA n'est pas requis, pose les cookies access/refresh.
+     * Si le 2FA est requis, la réponse contient seulement le token temporaire
+     * (transmis dans le corps, car de très courte durée).
      */
     @PostMapping("/login")
-    @Operation(summary = "Connexion utilisateur", description = "Authentifie avec email/mot de passe. Retourne JWT ou demande 2FA.")
+    @Operation(summary = "Connexion utilisateur", description = "Authentifie avec email/mot de passe. Pose les cookies JWT ou demande 2FA.")
     public ResponseEntity<ApiResponse<LoginResponse>> login(
             @Valid @RequestBody LoginRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
         String ipAddress = getIpAddress(httpRequest);
         LoginResponse response = authService.login(request, ipAddress);
-        return ResponseEntity.ok(ApiResponse.success("Connexion réussie", response));
+
+        setAuthCookies(httpResponse, response);
+
+        return ResponseEntity.ok(ApiResponse.success("Connexion réussie", response.toSafeResponse()));
     }
 
     /**
-     * Vérification du code 2FA.
-     * Complète le flux d'authentification après le login initial.
+     * Vérification du code 2FA. Pose les cookies access/refresh une fois validé.
      */
     @PostMapping("/2fa/verify")
-    @Operation(summary = "Vérifier code 2FA", description = "Vérifie le code TOTP ou OTP email pour compléter l'authentification.")
+    @Operation(summary = "Vérifier code 2FA", description = "Vérifie le code TOTP ou OTP email. Pose les cookies JWT en cas de succès.")
     public ResponseEntity<ApiResponse<LoginResponse>> verify2FA(
             @Valid @RequestBody TwoFactorVerifyRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
         String ipAddress = getIpAddress(httpRequest);
         LoginResponse response = authService.verify2FA(request, ipAddress);
-        return ResponseEntity.ok(ApiResponse.success("Vérification 2FA réussie", response));
+
+        setAuthCookies(httpResponse, response);
+
+        return ResponseEntity.ok(ApiResponse.success("Vérification 2FA réussie", response.toSafeResponse()));
     }
 
     /**
      * Rafraîchissement des tokens (rotation).
+     * Le refresh token est désormais lu depuis le cookie, plus depuis le body.
      */
     @PostMapping("/refresh")
-    @Operation(summary = "Rafraîchir les tokens", description = "Échange un refresh token contre de nouveaux tokens (rotation).")
+    @Operation(summary = "Rafraîchir les tokens", description = "Lit le refresh token depuis le cookie et pose de nouveaux cookies (rotation).")
     public ResponseEntity<ApiResponse<LoginResponse>> refresh(
-            @Valid @RequestBody RefreshTokenRequest request) {
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
 
-        LoginResponse response = authService.refreshToken(request);
-        return ResponseEntity.ok(ApiResponse.success("Tokens rafraîchis", response));
+        String refreshToken = jwtTokenProvider.getRefreshTokenFromCookies(httpRequest);
+        if (refreshToken == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Refresh token manquant", "MISSING_REFRESH_TOKEN"));
+        }
+
+        LoginResponse response = authService.refreshToken(new RefreshTokenRequest(refreshToken));
+
+        setAuthCookies(httpResponse, response);
+
+        return ResponseEntity.ok(ApiResponse.success("Tokens rafraîchis", response.toSafeResponse()));
     }
 
     /**
-     * Déconnexion (révocation du refresh token).
+     * Déconnexion : révoque les refresh tokens en base et efface les cookies.
      */
     @PostMapping("/logout")
-    @Operation(summary = "Déconnexion", description = "Révoque tous les refresh tokens de l'utilisateur.")
-    public ResponseEntity<ApiResponse<Void>> logout(@AuthenticationPrincipal UserPrincipal principal) {
+    @Operation(summary = "Déconnexion", description = "Révoque les refresh tokens et efface les cookies JWT.")
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @AuthenticationPrincipal UserPrincipal principal,
+            HttpServletResponse httpResponse) {
+
         authService.logout(principal.id());
+        clearAuthCookies(httpResponse);
+
         return ResponseEntity.ok(ApiResponse.success("Déconnexion réussie"));
     }
 
@@ -174,6 +208,30 @@ public class AuthController {
     }
 
     // ===== Utilitaires =====
+
+    /**
+     * Pose les cookies accessToken et refreshToken à partir d'une LoginResponse.
+     * Si la réponse ne contient pas de tokens (ex: flux 2FA en attente),
+     * aucun cookie n'est posé.
+     */
+    private void setAuthCookies(HttpServletResponse response, LoginResponse loginResponse) {
+        if (loginResponse.accessToken() != null) {
+            response.addHeader(HttpHeaders.SET_COOKIE,
+                    jwtTokenProvider.generateAccessTokenCookie(loginResponse.accessToken()).toString());
+        }
+        if (loginResponse.refreshToken() != null) {
+            response.addHeader(HttpHeaders.SET_COOKIE,
+                    jwtTokenProvider.generateRefreshTokenCookie(loginResponse.refreshToken()).toString());
+        }
+    }
+
+    /**
+     * Efface les cookies accessToken et refreshToken.
+     */
+    private void clearAuthCookies(HttpServletResponse response) {
+        response.addHeader(HttpHeaders.SET_COOKIE, jwtTokenProvider.clearAccessTokenCookie().toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, jwtTokenProvider.clearRefreshTokenCookie().toString());
+    }
 
     /**
      * Extrait l'adresse IP du client depuis la requête HTTP.

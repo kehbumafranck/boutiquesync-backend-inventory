@@ -24,8 +24,8 @@ import java.util.List;
 
 /**
  * Configuration Spring Security.
- * - Authentification stateless via JWT
- * - CORS configuré pour le frontend React
+ * - Authentification stateless via JWT transmis par cookies HttpOnly
+ * - CORS configuré pour le frontend React, avec credentials autorisés
  * - Headers de sécurité renforcés
  * - Autorisation basée sur les rôles (RBAC)
  */
@@ -40,23 +40,14 @@ public class SecurityConfig {
     @Value("${FRONTEND_URL:http://localhost:5173}")
     private String frontendUrl;
 
-    /**
-     * Chaîne de filtres de sécurité principale.
-     * Configure CORS, CSRF, sessions, endpoints publics et filtres JWT.
-     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-            // Désactiver CSRF (API stateless)
             .csrf(AbstractHttpConfigurer::disable)
-            // Configurer CORS
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            // Sessions stateless (JWT)
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            // Règles d'autorisation
             .authorizeHttpRequests(auth -> auth
-                // Endpoints publics (pas d'authentification requise)
                 .requestMatchers(
                     "/api/auth/login",
                     "/api/auth/register-admin",
@@ -72,10 +63,8 @@ public class SecurityConfig {
                     "/swagger-ui.html",
                     "/actuator/health"
                 ).permitAll()
-                // Tous les autres endpoints nécessitent une authentification
                 .anyRequest().authenticated()
             )
-            // Headers de sécurité
             .headers(headers -> headers
                 .contentTypeOptions(contentType -> {})
                 .frameOptions(frame -> frame.deny())
@@ -83,13 +72,14 @@ public class SecurityConfig {
                     .maxAgeInSeconds(31536000)
                     .includeSubDomains(true))
             )
-            // Ajouter le filtre JWT avant le filtre d'authentification par défaut
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
     }
 
     /**
      * Configuration CORS pour autoriser le frontend React.
+     * allowCredentials=true est obligatoire pour que le navigateur
+     * envoie/accepte les cookies HttpOnly cross-origin.
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
@@ -98,24 +88,18 @@ public class SecurityConfig {
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         configuration.setAllowCredentials(true);
-        configuration.setMaxAge(3600L);
+        configuration.setMaxAge(3000L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
 
-    /**
-     * Encodeur de mots de passe BCrypt avec force 12.
-     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);
     }
 
-    /**
-     * Gestionnaire d'authentification Spring Security.
-     */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();

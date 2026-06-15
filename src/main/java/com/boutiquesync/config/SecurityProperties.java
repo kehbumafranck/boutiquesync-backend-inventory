@@ -3,7 +3,6 @@ package com.boutiquesync.config;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
-
 /**
  * Propriétés de configuration pour la sécurité de l'application.
  * Chargées depuis application.yml sous le préfixe "boutiquesync.security".
@@ -27,6 +26,10 @@ public class SecurityProperties {
         private long refreshTokenExpiry = 604800;
         /** Émetteur du token */
         private String issuer = "boutiquesync-api";
+        /** Active l'attribut Secure sur les cookies (true en prod / HTTPS, false en dev local) */
+        private boolean cookieSecure = true;
+        /** Politique SameSite pour les cookies ("Lax", "Strict" ou "None") */
+        private String cookieSameSite = "Lax";
     }
 
     @Data

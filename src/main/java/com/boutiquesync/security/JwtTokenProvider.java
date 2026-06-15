@@ -2,12 +2,18 @@ package com.boutiquesync.security;
 
 import com.boutiquesync.config.SecurityProperties;
 import com.boutiquesync.model.User;
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
+import org.springframework.web.util.WebUtils;
 
 import javax.crypto.SecretKey;
 import java.util.Base64;
@@ -16,19 +22,22 @@ import java.util.UUID;
 
 /**
  * Fournisseur de tokens JWT.
- * Gère la génération, la validation et l'extraction des claims des tokens.
+ * Gère la génération, la validation, l'extraction des claims
+ * et désormais la création/lecture des cookies HttpOnly.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class JwtTokenProvider {
 
+    private static final String ACCESS_COOKIE_NAME = "accessToken";
+    private static final String REFRESH_COOKIE_NAME = "refreshToken";
+
     private final SecurityProperties securityProperties;
     private SecretKey secretKey;
 
     @PostConstruct
     public void init() {
-        // Décoder la clé depuis base64
         String secret = securityProperties.getJwt().getSecret();
         if (secret == null || secret.isBlank()) {
             throw new IllegalStateException(
@@ -50,9 +59,6 @@ public class JwtTokenProvider {
 
     /**
      * Génère un token d'accès JWT pour un utilisateur.
-     *
-     * @param user L'utilisateur authentifié
-     * @return Le token JWT signé
      */
     public String generateAccessToken(User user) {
         Date now = new Date();
@@ -72,9 +78,6 @@ public class JwtTokenProvider {
 
     /**
      * Génère un refresh token JWT.
-     *
-     * @param user L'utilisateur authentifié
-     * @return Le refresh token signé avec son JTI
      */
     public TokenPair generateRefreshToken(User user) {
         Date now = new Date();
@@ -95,13 +98,10 @@ public class JwtTokenProvider {
 
     /**
      * Génère un token temporaire pour le flux 2FA (15 minutes).
-     *
-     * @param user L'utilisateur en cours d'authentification 2FA
-     * @return Le token temporaire
      */
     public String generateTempToken(User user) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes
+        Date expiry = new Date(now.getTime() + 15 * 60 * 1000);
 
         return Jwts.builder()
                 .id(UUID.randomUUID().toString())
@@ -116,10 +116,6 @@ public class JwtTokenProvider {
 
     /**
      * Valide un token JWT et retourne les claims.
-     *
-     * @param token Le token à valider
-     * @return Les claims du token
-     * @throws JwtException si le token est invalide
      */
     public Claims validateToken(String token) {
         return Jwts.parser()
@@ -130,30 +126,90 @@ public class JwtTokenProvider {
                 .getPayload();
     }
 
-    /**
-     * Extrait l'ID utilisateur d'un token.
-     */
     public String getUserIdFromToken(String token) {
         return validateToken(token).getSubject();
     }
 
-    /**
-     * Extrait le rôle d'un token.
-     */
     public String getRoleFromToken(String token) {
         return validateToken(token).get("role", String.class);
     }
 
-    /**
-     * Vérifie si un token est un token temporaire 2FA.
-     */
     public boolean isTempToken(String token) {
         Claims claims = validateToken(token);
         return "2FA_TEMP".equals(claims.get("type", String.class));
     }
 
-    /**
-     * Paire token + JTI pour le refresh token.
-     */
     public record TokenPair(String token, String jti) {}
+
+    // ===================== Gestion des cookies =====================
+
+    /**
+     * Crée le cookie HttpOnly contenant l'access token.
+     * Envoyé sur toutes les routes ("/").
+     */
+    public ResponseCookie generateAccessTokenCookie(String token) {
+        return ResponseCookie.from(ACCESS_COOKIE_NAME, token)
+                .httpOnly(true)
+                .secure(securityProperties.getJwt().isCookieSecure())
+                .path("/")
+                .maxAge(securityProperties.getJwt().getAccessTokenExpiry())
+                .sameSite(securityProperties.getJwt().getCookieSameSite())
+                .build();
+    }
+
+    /**
+     * Crée le cookie HttpOnly contenant le refresh token.
+     * Path limité à /api/auth pour réduire son exposition.
+     */
+    public ResponseCookie generateRefreshTokenCookie(String token) {
+        return ResponseCookie.from(REFRESH_COOKIE_NAME, token)
+                .httpOnly(true)
+                .secure(securityProperties.getJwt().isCookieSecure())
+                .path("/api/auth")
+                .maxAge(securityProperties.getJwt().getRefreshTokenExpiry())
+                .sameSite(securityProperties.getJwt().getCookieSameSite())
+                .build();
+    }
+
+    /**
+     * Cookie vide pour effacer l'access token au logout.
+     */
+    public ResponseCookie clearAccessTokenCookie() {
+        return ResponseCookie.from(ACCESS_COOKIE_NAME, "")
+                .httpOnly(true)
+                .secure(securityProperties.getJwt().isCookieSecure())
+                .path("/")
+                .maxAge(0)
+                .sameSite(securityProperties.getJwt().getCookieSameSite())
+                .build();
+    }
+
+    /**
+     * Cookie vide pour effacer le refresh token au logout.
+     */
+    public ResponseCookie clearRefreshTokenCookie() {
+        return ResponseCookie.from(REFRESH_COOKIE_NAME, "")
+                .httpOnly(true)
+                .secure(securityProperties.getJwt().isCookieSecure())
+                .path("/api/auth")
+                .maxAge(0)
+                .sameSite(securityProperties.getJwt().getCookieSameSite())
+                .build();
+    }
+
+    /**
+     * Lit l'access token depuis les cookies de la requête.
+     */
+    public String getAccessTokenFromCookies(HttpServletRequest request) {
+        Cookie cookie = WebUtils.getCookie(request, ACCESS_COOKIE_NAME);
+        return cookie != null ? cookie.getValue() : null;
+    }
+
+    /**
+     * Lit le refresh token depuis les cookies de la requête.
+     */
+    public String getRefreshTokenFromCookies(HttpServletRequest request) {
+        Cookie cookie = WebUtils.getCookie(request, REFRESH_COOKIE_NAME);
+        return cookie != null ? cookie.getValue() : null;
+    }
 }

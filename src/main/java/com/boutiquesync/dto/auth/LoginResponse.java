@@ -3,8 +3,12 @@ package com.boutiquesync.dto.auth;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * DTO pour la réponse de connexion.
- * Contient soit les tokens (si 2FA désactivé), soit un token temporaire (si 2FA activé).
+ * DTO interne pour la réponse de connexion.
+ * Contient les tokens (utilisés uniquement côté serveur pour poser les cookies)
+ * et les informations utilisateur (retournées dans le body JSON).
+ *
+ * ⚠️ Ce record ne doit JAMAIS être sérialisé directement dans une réponse HTTP.
+ * Utiliser {@link #toSafeResponse()} pour obtenir la version sans tokens.
  *
  * @param accessToken        Token d'accès JWT (null si 2FA requis)
  * @param refreshToken       Refresh token (null si 2FA requis)
@@ -32,4 +36,21 @@ public record LoginResponse(
         String email,
         String role
     ) {}
+
+    /**
+     * Retourne une version sécurisée de la réponse, sans les tokens JWT.
+     * Les tokens sont transmis UNIQUEMENT via les cookies HttpOnly.
+     * Seul le tempToken (2FA) est conservé car il est de courte durée
+     * et nécessaire côté client pour le flux 2FA.
+     */
+    public LoginResponse toSafeResponse() {
+        return new LoginResponse(
+            null,                // accessToken masqué
+            null,                // refreshToken masqué
+            this.tempToken,      // conservé pour le flux 2FA
+            this.twoFactorRequired,
+            this.method,
+            this.user
+        );
+    }
 }

@@ -23,8 +23,9 @@ import java.util.List;
 
 /**
  * Filtre d'authentification JWT.
- * Intercepte chaque requête HTTP pour extraire et valider le token JWT
- * depuis l'en-tête Authorization (Bearer token).
+ * Intercepte chaque requête HTTP pour extraire et valider le token JWT,
+ * d'abord depuis le cookie "accessToken", puis depuis le header
+ * Authorization (Bearer) en repli (utile pour Swagger/Postman/clients API).
  */
 @Component
 @RequiredArgsConstructor
@@ -33,7 +34,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserRepository userRepository;
-
 
     private static final List<String> PUBLIC_PATHS = List.of(
         "/api/auth/login",
@@ -49,27 +49,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         "/actuator/health"
     );
 
-    // ✅ 1. Skip les routes publiques
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         return PUBLIC_PATHS.stream().anyMatch(path::startsWith);
     }
-    
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
-        // Extraire le token de l'en-tête Authorization
-        String token = extractTokenFromRequest(request);
+        String token = extractToken(request);
 
         if (StringUtils.hasText(token)) {
             try {
-                // Valider le token et extraire les claims
                 Claims claims = jwtTokenProvider.validateToken(token);
 
-                // Vérifier que ce n'est pas un token temporaire 2FA
                 if ("2FA_TEMP".equals(claims.get("type", String.class))) {
                     filterChain.doFilter(request, response);
                     return;
@@ -78,10 +74,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String userId = claims.getSubject();
                 String role = claims.get("role", String.class);
 
-                // Vérifier que l'utilisateur existe et est actif
                 User user = userRepository.findById(userId).orElse(null);
                 if (user != null && user.isActive()) {
-                    // Créer l'objet d'authentification Spring Security
                     var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
                     var authentication = new UsernamePasswordAuthenticationToken(
                             new UserPrincipal(user.getId(), user.getEmail(), user.getRole().name()),
@@ -90,7 +84,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     );
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-                    // Placer l'authentification dans le contexte de sécurité
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
             } catch (JwtException e) {
@@ -102,9 +95,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Extrait le token Bearer de l'en-tête Authorization.
+     * Extrait le token JWT : priorité au cookie "accessToken",
+     * sinon repli sur le header Authorization: Bearer ...
      */
-    private String extractTokenFromRequest(HttpServletRequest request) {
+    private String extractToken(HttpServletRequest request) {
+        String cookieToken = jwtTokenProvider.getAccessTokenFromCookies(request);
+        if (StringUtils.hasText(cookieToken)) {
+            return cookieToken;
+        }
+
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
