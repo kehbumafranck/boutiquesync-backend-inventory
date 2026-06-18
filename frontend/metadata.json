@@ -1,0 +1,6 @@
+{
+  "name": "SaaS Enterprise ERP & POS",
+  "description": "Plateforme moderne et complète de gestion de stock, point de vente (POS), comptabilité, clients, fournisseurs et administration système pour PME.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

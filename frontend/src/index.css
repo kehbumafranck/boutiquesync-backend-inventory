@@ -1,0 +1,222 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Redefining default palette values to map cleanly to the Elegant Dark #09090b/#18181b theme layout */
+  --color-slate-50: #09090b;       /* Pure App Background */
+  --color-slate-100: #1b1b1e;      /* Neutral/subtle container highlights */
+  --color-slate-150: #232326;      /* Faint panel borders */
+  --color-slate-200: #27272a;      /* Solid line borders */
+  --color-slate-300: #3f3f46;      /* Secondary focus accents */
+  --color-slate-400: #71717a;      /* Muted text descriptors */
+  --color-slate-500: #a1a1aa;      /* Medium high-contrast text and icons */
+  --color-slate-600: #d4d4d8;      /* Primary readability text alternatives */
+  --color-slate-700: #e4e4e7;      /* Vivid descriptions */
+  --color-slate-800: #f4f4f5;      /* High contrast text */
+  --color-slate-950: #6366f1;      /* Re-pointing primary purple accent */
+
+  --color-white: #18181b;          /* Converts all bg-white cards/panels directly into dark cards! */
+}
+
+@layer base {
+  /* Enforcing Elegant Dark core attributes on the whole HTML system */
+  html, body {
+    background-color: #09090b !important;
+    color: #fafafa !important;
+    font-family: 'Inter', sans-serif !important;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Custom overrides for default inputs to maintain high readable contrast */
+  input, select, textarea {
+    background-color: #09090b !important;
+    color: #ffffff !important;
+    border-color: #27272a !important;
+  }
+
+  input::placeholder, select::placeholder, textarea::placeholder {
+    color: #71717a !important;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 1px #6366f1 !important;
+  }
+
+  /* Keep table headers and cell rows aligned with Elegant Dark */
+  table th {
+    background-color: #121214 !important;
+    color: #a1a1aa !important;
+    border-color: #27272a !important;
+  }
+
+  table td {
+    background-color: #18181b !important;
+    color: #f4f4f5 !important;
+    border-color: #1b1b1e !important;
+  }
+
+  tr:hover td {
+    background-color: #222225 !important;
+  }
+
+  /* Custom override rule for modal overlays to prevent glaring bright overlays */
+  div.fixed.inset-0.bg-slate-900\/45,
+  div.fixed.inset-0.bg-slate-500\/75,
+  div.bg-slate-900\/45 {
+    background-color: rgba(9, 9, 11, 0.8) !important;
+    backdrop-filter: blur(4px) !important;
+  }
+
+  /* Specific quick navigational list adjustments */
+  .active-nav, .nav-item-active {
+    background-color: #18181b !important;
+    color: #ffffff !important;
+  }
+
+  /* Fixes text contrasts that might have been hardcoded as text-slate-800 or text-slate-900 */
+  .text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700, .text-slate-850, .text-slate-650 {
+    color: #fafafa !important;
+  }
+
+  /* Force white text class to render in absolute white since --color-white is mapped to background dark */
+  .text-white {
+    color: #ffffff !important;
+  }
+
+  /* High contrast colors for semantic status texts in dark theme */
+  .text-indigo-950, .text-indigo-900, .text-indigo-850, .text-indigo-805, .text-indigo-800 {
+    color: #c7d2fe !important;
+  }
+
+  .text-rose-950, .text-rose-900, .text-rose-850, .text-rose-800 {
+    color: #fecdd3 !important;
+  }
+
+  .text-emerald-950, .text-emerald-900, .text-emerald-850, .text-emerald-800 {
+    color: #a7f3d0 !important;
+  }
+
+  .text-amber-950, .text-amber-900, .text-amber-850, .text-amber-800 {
+    color: #fde68a !important;
+  }
+
+  .text-slate-600, .text-slate-500, .text-slate-650 {
+    color: #a1a1aa !important;
+  }
+
+  .text-slate-400 {
+    color: #71717a !important;
+  }
+
+  /* Custom overrides for light alert boxes, chips, and badges */
+  .bg-indigo-50, .bg-indigo-50\/20, .bg-indigo-50\/50, .bg-indigo-50\/15 {
+    background-color: rgba(99, 102, 241, 0.12) !important;
+  }
+  .hover\:bg-indigo-100:hover, .hover\:bg-indigo-105:hover {
+    background-color: rgba(99, 102, 241, 0.24) !important;
+  }
+  .text-indigo-600, .text-indigo-700, .text-indigo-800 {
+    color: #818cf8 !important;
+  }
+  .border-indigo-100, .border-indigo-150, .border-indigo-200 {
+    border-color: rgba(99, 102, 241, 0.2) !important;
+  }
+
+  .bg-emerald-50, .bg-emerald-50\/20, .bg-emerald-50\/50 {
+    background-color: rgba(16, 185, 129, 0.12) !important;
+  }
+  .hover\:bg-emerald-100:hover {
+    background-color: rgba(16, 185, 129, 0.24) !important;
+  }
+  .text-emerald-700, .text-emerald-800 {
+    color: #34d399 !important;
+  }
+  .border-emerald-100, .border-emerald-250 {
+    border-color: rgba(16, 185, 129, 0.2) !important;
+  }
+
+  .bg-amber-50, .bg-amber-50\/20, .bg-amber-50\/50 {
+    background-color: rgba(245, 158, 11, 0.12) !important;
+  }
+  .hover\:bg-amber-100:hover {
+    background-color: rgba(245, 158, 11, 0.24) !important;
+  }
+  .text-amber-700, .text-amber-800 {
+    color: #fbbf24 !important;
+  }
+  .border-amber-100 {
+    border-color: rgba(245, 158, 11, 0.2) !important;
+  }
+
+  .bg-rose-50, .bg-rose-50\/20, .bg-rose-50\/50 {
+    background-color: rgba(244, 63, 94, 0.12) !important;
+  }
+  .hover\:bg-rose-100:hover {
+    background-color: rgba(244, 63, 94, 0.24) !important;
+  }
+  .text-rose-700, .text-rose-800, .text-rose-600 {
+    color: #fb7185 !important;
+  }
+  .border-rose-100 {
+    border-color: rgba(244, 63, 94, 0.2) !important;
+  }
+
+  /* Card highlights and interactive states */
+  .hover\:bg-slate-50:hover, .hover\:bg-slate-100:hover, .hover\:bg-slate-100\/80:hover {
+    background-color: #27272a !important;
+  }
+}
+
+/* Scrollbar customization matching zinc palette */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Elegant Dark special element patterns */
+.dot-grid {
+  background-image: radial-gradient(#27272a 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+.stat-card {
+  transition: border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -2px rgba(0, 0, 0, 0.2) !important;
+}
+
+.stat-card:hover {
+  border-color: #3f3f46 !important;
+  transform: translateY(-2px);
+}
+
+/* Badge specific color definitions reflecting high fidelity red/green alarms in dark theme */
+.badge-alert {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+  color: #fb7185 !important;
+  border: 1px solid rgba(244, 63, 94, 0.3) !important;
+}
+
+.badge-success {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+}
+
+/* Custom navigation button styling inside application container */
+button {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
