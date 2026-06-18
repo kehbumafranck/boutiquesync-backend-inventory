@@ -25,7 +25,7 @@ public class EmployeeInvitationController {
             @Valid @RequestBody InviteEmployeeRequest request,
             @AuthenticationPrincipal UserDetails admin) {
 
-        invitationService.inviteEmployee(request, admin.getUsername());
+        invitationService.inviteEmployee(request, admin.getEmail);
         return ResponseEntity.accepted().build();
     }
 
