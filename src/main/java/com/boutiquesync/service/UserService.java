@@ -62,7 +62,7 @@ public class UserService {
         user = userRepository.save(user);
 
         auditService.logAction(createdBy, user.getEmail(), "USER_CREATE",
-                "USER", user.getId(), true);
+                "USER", user.getId(), user.getFirstName() + " " + user.getLastName(), null, null, true);
 
         log.info("Utilisateur créé: {} {} ({})", user.getFirstName(), user.getLastName(), user.getRole());
         return user;

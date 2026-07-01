@@ -1,88 +1,105 @@
-// package com.boutiquesync.controller;
+package com.boutiquesync.controller;
 
-// import com.boutiquesync.dto.ApiResponse;
-// import com.boutiquesync.dto.PageResponse;
-// import com.boutiquesync.model.AccountingLine;
-// import com.boutiquesync.model.JournalEntry;
-// import com.boutiquesync.service.AccountingService;
-// import io.swagger.v3.oas.annotations.Operation;
-// import io.swagger.v3.oas.annotations.tags.Tag;
-// import lombok.RequiredArgsConstructor;
-// import org.springframework.data.domain.Page;
-// import org.springframework.data.domain.Pageable;
-// import org.springframework.format.annotation.DateTimeFormat;
-// import org.springframework.http.ResponseEntity;
-// import org.springframework.security.access.prepost.PreAuthorize;
-// import org.springframework.web.bind.annotation.*;
+import com.boutiquesync.dto.ApiResponse;
+import com.boutiquesync.model.Sale;
+import com.boutiquesync.model.enums.SaleStatus;
+import com.boutiquesync.repository.SaleRepository;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
 
-// import java.time.LocalDate;
-// import java.util.List;
-// import java.util.Map;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Collectors;
 
-// /**
-//  * Contrôleur de comptabilité OHADA.
-//  * Journal, grand-livre, balance et compte de résultat.
-//  * Réservé aux administrateurs.
-//  */
-// @RestController
-// @RequestMapping("/api/accounting")
-// @RequiredArgsConstructor
-// @PreAuthorize("hasRole('ADMIN')")
-// @Tag(name = "Comptabilité", description = "Comptabilité OHADA SYSCOHADA (ADMIN)")
-// public class AccountingController {
+/**
+ * Contrôleur de comptabilité simplifié.
+ * Calcule le bilan financier réel à partir des ventes enregistrées en base.
+ * Le module AccountingService OHADA complet est prévu pour une prochaine version.
+ */
+@RestController
+@RequestMapping("/api/accounting")
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
+@Tag(name = "Comptabilité", description = "Bilan financier calculé depuis les ventes (ADMIN)")
+public class AccountingController {
 
-//     private final AccountingService accountingService;
+    private final SaleRepository saleRepository;
 
-//     /**
-//      * Récupère le journal comptable avec pagination et filtrage par dates.
-//      */
-//     @GetMapping("/journal")
-//     @Operation(summary = "Journal comptable", description = "Retourne les écritures comptables avec filtrage par période.")
-//     public ResponseEntity<ApiResponse<PageResponse<JournalEntry>>> getJournal(
-//             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-//             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-//             Pageable pageable) {
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-//         Page<JournalEntry> entries = accountingService.getJournal(from, to, pageable);
-//         return ResponseEntity.ok(ApiResponse.success("Journal comptable", PageResponse.from(entries)));
-//     }
+    /**
+     * Retourne le bilan financier du mois courant :
+     * - totalRevenue  : CA total des ventes complétées ce mois
+     * - totalExpense  : coût d'achat estimé (non disponible sans AccountingService → 0)
+     * - netProfit     : CA brut (totalRevenue - totalExpense)
+     * - marginPercent : marge brute en %
+     * - entries       : liste des ventes du mois en écritures comptables
+     */
+    @GetMapping("/summary")
+    @Operation(summary = "Bilan comptable du mois", description = "CA réel calculé depuis les ventes MongoDB.")
+    public ResponseEntity<ApiResponse<AccountingSummary>> getSummary() {
+        LocalDateTime startOfMonth = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        LocalDateTime endOfMonth   = LocalDate.now().atTime(LocalTime.MAX);
 
-//     /**
-//      * Récupère le grand-livre (regroupement par compte).
-//      */
-//     @GetMapping("/ledger")
-//     @Operation(summary = "Grand-livre", description = "Retourne le grand-livre par compte comptable.")
-//     public ResponseEntity<ApiResponse<Map<String, List<AccountingLine>>>> getLedger(
-//             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-//             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        List<Sale> monthSales = saleRepository.findByCreatedAtBetweenAndStatus(
+                startOfMonth, endOfMonth, SaleStatus.COMPLETED);
 
-//         Map<String, List<AccountingLine>> ledger = accountingService.getLedger(from, to);
-//         return ResponseEntity.ok(ApiResponse.success("Grand-livre", ledger));
-//     }
+        BigDecimal totalRevenue = monthSales.stream()
+                .map(Sale::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-//     /**
-//      * Récupère la balance comptable.
-//      */
-//     @GetMapping("/balance")
-//     @Operation(summary = "Balance comptable", description = "Retourne la balance des comptes sur une période.")
-//     public ResponseEntity<ApiResponse<List<AccountingService.AccountBalance>>> getBalance(
-//             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-//             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        // Les dépenses (achats stock, loyer…) ne sont pas encore en BD.
+        // On retourne 0 pour l'instant ; le frontend l'affiche comme "non disponible".
+        BigDecimal totalExpense  = BigDecimal.ZERO;
+        BigDecimal netProfit     = totalRevenue.subtract(totalExpense);
+        double     marginPercent = totalRevenue.compareTo(BigDecimal.ZERO) > 0
+                ? netProfit.divide(totalRevenue, 4, RoundingMode.HALF_UP)
+                           .multiply(BigDecimal.valueOf(100))
+                           .doubleValue()
+                : 0.0;
 
-//         List<AccountingService.AccountBalance> balance = accountingService.getBalance(from, to);
-//         return ResponseEntity.ok(ApiResponse.success("Balance comptable", balance));
-//     }
+        List<AccountingEntry> entries = monthSales.stream()
+                .sorted(Comparator.comparing(Sale::getCreatedAt).reversed())
+                .map(s -> new AccountingEntry(
+                        s.getId(),
+                        s.getCreatedAt() != null ? s.getCreatedAt().format(DATE_FMT) : "",
+                        "Ventes POS",
+                        s.getSaleNumber() + " — " + (s.getCustomerName() != null ? s.getCustomerName() : "Passager Éphémère"),
+                        s.getTotalAmount(),
+                        "REVENUE"
+                ))
+                .collect(Collectors.toList());
 
-//     /**
-//      * Récupère le compte de résultat.
-//      */
-//     @GetMapping("/income-statement")
-//     @Operation(summary = "Compte de résultat", description = "Retourne le compte de résultat sur une période.")
-//     public ResponseEntity<ApiResponse<AccountingService.IncomeStatement>> getIncomeStatement(
-//             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-//             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(ApiResponse.success("Bilan comptable",
+                new AccountingSummary(totalRevenue, totalExpense, netProfit, marginPercent, entries)));
+    }
 
-//         AccountingService.IncomeStatement statement = accountingService.getIncomeStatement(from, to);
-//         return ResponseEntity.ok(ApiResponse.success("Compte de résultat", statement));
-//     }
-// }
+    // ─── Records publics ─────────────────────────────────────────────────────
+
+    public record AccountingSummary(
+            BigDecimal totalRevenue,
+            BigDecimal totalExpense,
+            BigDecimal netProfit,
+            double     marginPercent,
+            List<AccountingEntry> entries
+    ) {}
+
+    public record AccountingEntry(
+            String     id,
+            String     date,
+            String     category,
+            String     description,
+            BigDecimal amount,
+            String     type   // "REVENUE" | "EXPENSE"
+    ) {}
+}

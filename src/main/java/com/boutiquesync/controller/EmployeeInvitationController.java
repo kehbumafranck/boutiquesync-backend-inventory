@@ -1,6 +1,7 @@
 package com.boutiquesync.controller;
 
 import com.boutiquesync.dto.user.*;
+import com.boutiquesync.security.UserPrincipal;
 import com.boutiquesync.service.EmployeeInvitationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -8,7 +9,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -23,9 +23,9 @@ public class EmployeeInvitationController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> inviteEmployee(
             @Valid @RequestBody InviteEmployeeRequest request,
-            @AuthenticationPrincipal UserDetails admin) {
+            @AuthenticationPrincipal UserPrincipal admin) {
 
-        invitationService.inviteEmployee(request, admin.getEmail);
+        invitationService.inviteEmployee(request, admin.email());
         return ResponseEntity.accepted().build();
     }
 

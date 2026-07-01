@@ -34,6 +34,8 @@ import {
 } from "lucide-react";
 import { Product, User } from "../types";
 import { AuditModule, AuditSeverity } from "../components/AppProvider";
+import { boutiqueApi } from "../services/apiClient";
+import { CATEGORIES } from "../mockData";
 
 // ─────────────────────────────────────────────────────────────────────────
 // UNITÉS DE MESURE — liste fixe côté frontend
@@ -92,6 +94,7 @@ export default function ProductManagement({
   const [quantity, setQuantity] = useState(0);
   const [alertThreshold, setAlertThreshold] = useState(3);
   const [unit, setUnit] = useState<string>(UNITS[0]);
+  const [category, setCategory] = useState<string>(CATEGORIES[0]);
   const [description, setDescription] = useState("");
 
   // Sorter logic
@@ -119,6 +122,7 @@ export default function ProductManagement({
     setQuantity(5);
     setAlertThreshold(2);
     setUnit(UNITS[0]);
+    setCategory(CATEGORIES[0]);
     setDescription("");
     setIsModalOpen(true);
   };
@@ -136,6 +140,7 @@ export default function ProductManagement({
     setQuantity(p.quantity);
     setAlertThreshold(p.alertThreshold);
     setUnit(p.unit || UNITS[0]);
+    setCategory(p.category || CATEGORIES[0]);
     setDescription(p.description);
     setIsModalOpen(true);
   };
@@ -163,6 +168,7 @@ export default function ProductManagement({
           name,
           reference: barcode, // pas de champ reference côté backend ; on aligne sur le barcode
           barcode,
+          category,
           purchasePrice,
           sellingPrice,
           vatRate,
@@ -180,18 +186,38 @@ export default function ProductManagement({
           "INFO",
         );
       } else if (modalMode === "EDIT" && selectedProduct) {
+        // 1. Mettre à jour les infos du produit (PUT /api/products/{id})
         await onUpdateProduct({
           ...selectedProduct,
           name,
           barcode,
+          category,
           purchasePrice,
           sellingPrice,
           vatRate,
-          quantity,
+          quantity,       // passé pour cohérence locale, ignoré par le backend
           alertThreshold,
           unit,
           description,
         });
+
+        // 2. Si la quantité a changé, ajuster le stock via InventoryService
+        //    (le backend UpdateProductRequest ne prend pas currentStock)
+        if (quantity !== selectedProduct.quantity) {
+          await boutiqueApi.inventory.adjustStock(
+            selectedProduct.id,
+            quantity,
+            `Ajustement manuel depuis la fiche produit — '${name}'`,
+          );
+          onAddAuditLog(
+            "Stock ajusté",
+            "STOCK",
+            operatorName,
+            `Stock de '${name}' modifié : ${selectedProduct.quantity} → ${quantity} ${unit}`,
+            "INFO",
+          );
+        }
+
         onAddAuditLog(
           "Produit modifié",
           "PRODUCTS",
@@ -447,18 +473,18 @@ export default function ProductManagement({
 
                       {currentUser?.role !== "EMPLOYEE" && (
                         <td className="py-3.5 px-4 text-right font-mono text-slate-500">
-                          {p.purchasePrice.toFixed(2)} €
+                          {Math.round(p.purchasePrice).toLocaleString('fr-FR')} FCFA
                         </td>
                       )}
 
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">
-                        {p.sellingPrice.toFixed(2)} €
+                        {Math.round(p.sellingPrice).toLocaleString('fr-FR')} FCFA
                       </td>
 
                       {currentUser?.role !== "EMPLOYEE" && (
                         <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-semibold bg-emerald-50/10">
                           <span className="block">
-                            {marginAmt.toFixed(2)} €
+                            {Math.round(marginAmt).toLocaleString('fr-FR')} FCFA
                           </span>
                           <span className="text-[10px] text-emerald-500 font-light">
                             ({marginPct.toFixed(0)}%)
@@ -571,7 +597,7 @@ export default function ProductManagement({
                           P.V. Public
                         </span>
                         <span className="text-sm font-black text-slate-900">
-                          {p.sellingPrice.toFixed(2)} €
+                          {Math.round(p.sellingPrice).toLocaleString('fr-FR')} FCFA
                         </span>
                       </div>
                       <div className="text-right">
@@ -682,7 +708,7 @@ export default function ProductManagement({
                           Tarif d'Achat
                         </span>
                         <span className="text-sm font-bold text-slate-800">
-                          {selectedProduct.purchasePrice.toFixed(2)} €
+                          {Math.round(selectedProduct.purchasePrice).toLocaleString('fr-FR')} FCFA
                         </span>
                       </div>
                       <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-center">
@@ -690,7 +716,7 @@ export default function ProductManagement({
                           Tarif de Vente
                         </span>
                         <span className="text-sm font-bold text-slate-800">
-                          {selectedProduct.sellingPrice.toFixed(2)} €
+                          {Math.round(selectedProduct.sellingPrice).toLocaleString('fr-FR')} FCFA
                         </span>
                       </div>
                     </>
@@ -700,7 +726,7 @@ export default function ProductManagement({
                         Tarif de Vente Public
                       </span>
                       <span className="text-base font-black text-slate-900">
-                        {selectedProduct.sellingPrice.toFixed(2)} €
+                        {Math.round(selectedProduct.sellingPrice).toLocaleString('fr-FR')} FCFA
                       </span>
                     </div>
                   )}
@@ -726,11 +752,11 @@ export default function ProductManagement({
                       </div>
                       <span className="text-xs font-mono font-bold text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-100">
                         +
-                        {(
+                        {Math.round(
                           selectedProduct.sellingPrice -
                           selectedProduct.purchasePrice
-                        ).toFixed(2)}{" "}
-                        €
+                        ).toLocaleString('fr-FR')}{" "}
+                        FCFA
                       </span>
                     </div>
                     <div className="text-[10px] text-emerald-600 mt-1.5 flex justify-between">
@@ -850,6 +876,23 @@ export default function ProductManagement({
 
                   <div>
                     <label className="block text-slate-700 mb-1">
+                      Catégorie
+                    </label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-slate-50/50 text-slate-700 focus:bg-white focus:outline-none transition"
+                    >
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 mb-1">
                       Taux de TVA (%)
                     </label>
                     <input
@@ -866,7 +909,7 @@ export default function ProductManagement({
 
                   <div>
                     <label className="block text-slate-700 mb-1">
-                      Prix d'Achat HT (€) *
+                      Prix d'Achat HT (FCFA) *
                     </label>
                     <input
                       type="number"
@@ -883,7 +926,7 @@ export default function ProductManagement({
 
                   <div>
                     <label className="block text-slate-700 mb-1">
-                      Prix de Vente public TTC (€) *
+                      Prix de Vente public TTC (FCFA) *
                     </label>
                     <input
                       type="number"
@@ -900,23 +943,22 @@ export default function ProductManagement({
 
                   <div>
                     <label className="block text-slate-700 mb-1">
-                      Quantité initiale en Stock
+                      {modalMode === "EDIT" ? "Nouvelle quantité en stock" : "Quantité initiale en stock"}
                     </label>
                     <input
                       type="number"
                       required
                       min="0"
                       value={quantity}
-                      disabled={modalMode === "EDIT"}
                       onChange={(e) =>
                         setQuantity(parseInt(e.target.value) || 0)
                       }
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-slate-50/50 text-slate-800 focus:bg-white focus:outline-none transition font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-slate-50/50 text-slate-800 focus:bg-white focus:outline-none transition font-mono"
                     />
                     {modalMode === "EDIT" && (
                       <span className="text-[9px] text-slate-400 mt-1 block font-light">
-                        ⚠️ Pour modifier le stock actuel, veuillez passer par
-                        l'onglet de suivi des Stocks.
+                        💡 Modifiez directement la quantité ici. Pour un suivi
+                        détaillé des entrées/sorties, utilisez l'onglet Suivi Stocks.
                       </span>
                     )}
                   </div>

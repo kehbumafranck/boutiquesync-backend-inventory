@@ -70,8 +70,9 @@ export default function Sidebar({
     { id: 'PRODUCTS' as NavigationTab, label: 'Gestion Produits', icon: Box, roles: ['ADMIN', 'EMPLOYEE'] },
     { id: 'STOCK' as NavigationTab, label: 'Suivi Stocks', icon: Shuffle, roles: ['ADMIN'] },
     { id: 'POS' as NavigationTab, label: 'Caisse / POS', icon: ShoppingCart, roles: ['ADMIN', 'EMPLOYEE'] },
-    { id: 'CLIENTS' as NavigationTab, label: 'Clients & Fidélité', icon: Users, roles: ['ADMIN'] },
-    { id: 'SUPPLIERS' as NavigationTab, label: 'Fournisseurs', icon: Briefcase, roles: ['ADMIN'] },
+    // TODO: Clients & Fournisseurs — à réactiver lors de la prochaine mise à jour
+    // { id: 'CLIENTS' as NavigationTab, label: 'Clients & Fidélité', icon: Users, roles: ['ADMIN'] },
+    // { id: 'SUPPLIERS' as NavigationTab, label: 'Fournisseurs', icon: Briefcase, roles: ['ADMIN'] },
     { id: 'FINANCE' as NavigationTab, label: 'Compta & Finances', icon: TrendingUp, roles: ['ADMIN'] },
     { id: 'USERS' as NavigationTab, label: 'Utilisateurs & Rôles', icon: UserCog, roles: ['ADMIN'] },
     { id: 'SECURITY' as NavigationTab, label: 'Sécurité globale', icon: ShieldAlert, roles: ['ADMIN'] },
@@ -113,7 +114,7 @@ export default function Sidebar({
             </div>
             {!collapsed && (
               <span className="text-sm font-bold text-white tracking-tight truncate">
-                SaaS Enterprise
+                 Enterprise KEH
               </span>
             )}
           </div>

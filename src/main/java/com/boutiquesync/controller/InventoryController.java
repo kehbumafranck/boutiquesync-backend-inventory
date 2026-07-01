@@ -56,7 +56,7 @@ public class InventoryController {
         int newQuantity = (int) body.get("newQuantity");
         String note = (String) body.getOrDefault("note", "Ajustement manuel");
 
-        StockMovement movement = inventoryService.adjustStock(productId, newQuantity, note, principal.id());
+        StockMovement movement = inventoryService.adjustStock(productId, newQuantity, note, principal.id(), principal.email());
         return ResponseEntity.ok(ApiResponse.success("Stock ajusté", movement));
     }
 

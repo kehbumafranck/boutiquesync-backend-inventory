@@ -90,4 +90,6 @@ public class Sale {
 
     @CreatedDate
     private LocalDateTime createdAt;
+
+    
 }

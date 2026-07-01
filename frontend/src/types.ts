@@ -8,6 +8,7 @@ export interface Product {
   name: string;
   reference: string; // conservé côté frontend uniquement (le backend n'a pas ce champ)
   barcode: string;
+  category:string;
   purchasePrice: number;
   sellingPrice: number;
   vatRate: number;
@@ -183,6 +184,72 @@ export interface LoginResponseDto {
   method: string | null; // "TOTP" | "EMAIL_OTP"
   user: AuthUserInfo | null; // null si twoFactorRequired === true
 }
+
+// ─── Réponses du Dashboard ────────────────────────────────────────────────
+
+/** Point du graphe hebdomadaire (Lun → Aujourd'hui). */
+export interface WeeklyRevenue {
+  date: string;     // "YYYY-MM-DD"
+  label: string;    // "Lun 23/06"
+  revenue: number;
+}
+
+/** Vente récente enrichie retournée par le dashboard backend. */
+export interface RecentSale {
+  id: string;
+  saleNumber: string;
+  employeeName: string;    // nom de l'employé qui a effectué la vente
+  customerName: string;
+  firstProductName: string; // premier produit vendu
+  itemsSummary: string;    // "Produit A (x2), Produit B (x1)"
+  totalAmount: number;
+  paymentMethod: string;
+  date: string;            // "YYYY-MM-DD"
+  time: string;            // "HH:mm"
+}
+
+/** Événement de sécurité depuis le journal d'audit. */
+export interface DashboardSecurityEvent {
+  id: string;
+  action: string;
+  userEmail: string;
+  ipAddress: string;
+  status: 'SUCCESS' | 'FAILURE';
+  date: string;
+  time: string;
+}
+
+/**
+ * KPIs complets du tableau de bord — retournés par GET /api/dashboard/summary.
+ */
+export interface DashboardSummaryDto {
+  // Jour
+  todaySalesCount: number;
+  todayRevenue: number;
+  // Semaine
+  weekSalesCount: number;
+  weekRevenue: number;
+  // Mois courant
+  monthSalesCount: number;
+  monthRevenue: number;
+  // Mois précédent
+  prevMonthSalesCount: number;
+  prevMonthRevenue: number;
+  trendPercent: number | null;
+  // Marge brute mensuelle
+  monthCostOfGoods: number;
+  grossMargin: number;
+  operationalMarginPct: number | null;
+  // Graphe 7 jours (Lun → Aujourd'hui)
+  weeklyGraph: WeeklyRevenue[];
+  // Alertes stock
+  stockAlertsCount: number;
+  // Dernières ventes de la semaine
+  recentWeekSales: RecentSale[];
+  // Télémétrie sécurité
+  securityEvents: DashboardSecurityEvent[];
+}
+
 /**
  * Enveloppe générique renvoyée par toutes les routes Spring Boot.
  * Le payload métier réel est toujours dans `data`.

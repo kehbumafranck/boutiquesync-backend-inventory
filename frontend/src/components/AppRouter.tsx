@@ -135,6 +135,7 @@ export default function AppRouter() {
     <Routes>
       {/* ── 1. ROUTE PUBLIQUE D'INVITATION (Accessible n'importe quand) ── */}
       <Route path="/invite/verify" element={<CompleteRegistration />} />
+      <Route path="/complete-registration" element={<CompleteRegistration />} />
 
       {/* ── 2. ROUTES D'AUTHENTIFICATION ── */}
       <Route
@@ -227,6 +228,7 @@ export default function AppRouter() {
                           sales={appState.sales}
                           securityEvents={appState.securityEvents}
                           auditLogs={appState.auditLogs}
+                          dashboardSummary={appState.dashboardSummary}
                           onNavigate={(tab) =>
                             navigate(`/${tab.toLowerCase()}`)
                           }
@@ -280,6 +282,8 @@ export default function AppRouter() {
                         />
                       }
                     />
+                    {/* TODO: Clients & Fournisseurs — routes désactivées, à réactiver lors de la prochaine MàJ */}
+                    {/*
                     <Route
                       path="clients"
                       element={
@@ -322,17 +326,12 @@ export default function AppRouter() {
                         </ProtectedComponent>
                       }
                     />
+                    */}
                     <Route
                       path="finance"
                       element={
                         <ProtectedComponent allowedRoles={["ADMIN", "MANAGER"]}>
-                          <AccountingModule
-                            financialEntries={appState.financialEntries}
-                            sales={appState.sales}
-                            onAddFinancialEntry={handleAddNewExpense}
-                            onAddAuditLog={handleAddAuditLog}
-                            operatorName={currentUserFullName}
-                          />
+                          <AccountingModule />
                         </ProtectedComponent>
                       }
                     />

@@ -124,11 +124,11 @@ public class ProductController {
     // /**
     //  * Liste les catégories de produits.
     //  */
-    // @GetMapping("/categories")
-    // @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
-    // @Operation(summary = "Lister les catégories", description = "Retourne la liste des catégories de produits.")
-    // public ResponseEntity<ApiResponse<List<String>>> getCategories() {
-    //     List<String> categories = productService.getCategories();
-    //     return ResponseEntity.ok(ApiResponse.success("Catégories récupérées", categories));
-    // }
+    @GetMapping("/categories")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Lister les catégories", description = "Retourne la liste des catégories de produits.")
+    public ResponseEntity<ApiResponse<List<String>>> getCategories() {
+        List<String> categories = productService.getCategories();
+        return ResponseEntity.ok(ApiResponse.success("Catégories récupérées", categories));
+    }
 }

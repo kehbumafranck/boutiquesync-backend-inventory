@@ -46,6 +46,7 @@ import {
   SecurityEvent,
   Notification,
   ConnectedDevice,
+  DashboardSummaryDto,
 } from "../types";
 import { setOnRefreshFailed } from "./useApiRequest";
 
@@ -110,6 +111,8 @@ interface AppState {
   notifications: Notification[];
   devices: ConnectedDevice[];
   globalMfaEnforced: boolean;
+  /** KPIs du dashboard calculés côté backend sur toute la base de données */
+  dashboardSummary: DashboardSummaryDto | null;
 }
 
 /** État initial vide : toutes les données réelles viennent du backend. */
@@ -126,6 +129,7 @@ const EMPTY_APP_STATE: AppState = {
   notifications: [],
   devices: [],
   globalMfaEnforced: false,
+  dashboardSummary: null,
 };
 
 interface AppContextType {
@@ -299,21 +303,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       let clients: Client[] = [];
-      try {
-        clients = await boutiqueApi.clients.list();
-      } catch (err) {
-        console.error("[AppProvider] Impossible de charger les clients.", err);
-      }
+      // TODO: ClientController n'existe pas encore dans le backend
+      // try {
+      //   clients = await boutiqueApi.clients.list();
+      // } catch (err) {
+      //   console.error("[AppProvider] Impossible de charger les clients.", err);
+      // }
 
       let suppliers: Supplier[] = [];
-      try {
-        suppliers = await boutiqueApi.suppliers.list();
-      } catch (err) {
-        console.error(
-          "[AppProvider] Impossible de charger les fournisseurs.",
-          err,
-        );
-      }
+      // TODO: SupplierController n'existe pas encore dans le backend
+      // try {
+      //   suppliers = await boutiqueApi.suppliers.list();
+      // } catch (err) {
+      //   console.error("[AppProvider] Impossible de charger les fournisseurs.", err);
+      // }
 
       let users: User[] = [];
       try {
@@ -335,6 +338,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      // Dashboard summary — métriques calculées sur toute la BD côté backend
+      let dashboardSummary: DashboardSummaryDto | null = null;
+      if (currentUser?.role === "ADMIN") {
+        try {
+          dashboardSummary = await boutiqueApi.dashboard.getSummary();
+        } catch (err) {
+          console.warn("[AppProvider] Impossible de charger le dashboard summary.", err);
+        }
+      }
+
+      // Journal d'audit — chargé depuis MongoDB (rétention 5 ans)
+      let auditLogs: AuditLog[] = [];
+      if (currentUser?.role === "ADMIN") {
+        try {
+          const rawLogs = await boutiqueApi.auditLogs.list(0, 100);
+          auditLogs = rawLogs as AuditLog[];
+        } catch (err) {
+          console.warn("[AppProvider] Impossible de charger les logs d'audit.", err);
+        }
+      }
+
       setAppState((prev) => ({
         ...prev,
         products,
@@ -343,6 +367,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         suppliers,
         users,
         stockMovements,
+        dashboardSummary,
+        auditLogs,
       }));
 
       setIsLoadingInitialData(false);
@@ -350,6 +376,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     loadInitialData();
   }, [currentUser, apiConfig.baseUrl]);
+
+  // ── Polling dashboard toutes les 30 secondes ────────────────────────────
+  // Rafraîchit uniquement les métriques légères (summary) sans recharger
+  // tous les produits/ventes. Actif seulement pour les admins connectés.
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "ADMIN") return;
+
+    const refreshSummary = async () => {
+      try {
+        const dashboardSummary = await boutiqueApi.dashboard.getSummary();
+        setAppState((prev) => ({ ...prev, dashboardSummary }));
+      } catch {
+        // silencieux — ne pas déconnecter l'utilisateur pour un polling raté
+      }
+    };
+
+    const intervalId = setInterval(refreshSummary, 30_000); // toutes les 30s
+    return () => clearInterval(intervalId);
+  }, [currentUser]);
   // ── Moteur d'alertes stock automatiques ─────────────────────────────────
   useEffect(() => {
     const newAlerts: Notification[] = [];
@@ -483,10 +528,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleUpdateProduct = useCallback(async (updated: Product) => {
     const saved = await boutiqueApi.products.update(updated.id, updated);
-    setAppState((prev) => ({
-      ...prev,
-      products: prev.products.map((p) => (p.id === updated.id ? saved : p)),
-    }));
+    // Recharger tous les produits depuis le backend pour avoir les données fraîches
+    // (le backend peut avoir recalculé des champs, notamment currentStock)
+    try {
+      const products = await boutiqueApi.products.list(0, 200);
+      setAppState((prev) => ({ ...prev, products }));
+    } catch {
+      // Fallback : mise à jour locale uniquement
+      setAppState((prev) => ({
+        ...prev,
+        products: prev.products.map((p) => (p.id === updated.id ? saved : p)),
+      }));
+    }
   }, []);
 
   const handleDeleteProduct = useCallback(async (id: string) => {
@@ -504,28 +557,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleAddStockMovement = useCallback(
     async (payload: Omit<StockMovement, "id" | "createdAt">) => {
       try {
-        const existingQty =
-          appState.products.find((p) => p.id === payload.productId)?.quantity ??
-          0;
-        const delta = payload.newQuantity - existingQty;
-
+        // Le backend attend la nouvelle quantité absolue (pas un delta)
         await boutiqueApi.inventory.adjustStock(
           payload.productId,
-          delta,
+          payload.newQuantity,
           payload.reason,
         );
 
+        // Rafraîchir immédiatement les produits et mouvements depuis le backend
         const [products, stockMovements] = await Promise.all([
-          boutiqueApi.products.list(0, 50),
+          boutiqueApi.products.list(0, 200), // taille plus grande pour tout récupérer
           boutiqueApi.inventory.getMovements(),
         ]);
 
         setAppState((prev) => ({ ...prev, products, stockMovements }));
+
+        // Rafraîchir le summary dashboard (alertes stock, marge)
+        try {
+          const dashboardSummary = await boutiqueApi.dashboard.getSummary();
+          setAppState((prev) => ({ ...prev, dashboardSummary }));
+        } catch { /* silencieux */ }
       } catch (err: any) {
-        alert(err.message || "Échec de l'ajustement de stock.");
+        alert(err?.response?.data?.message || err.message || "Échec de l'ajustement de stock.");
       }
     },
-    [appState.products],
+    [],
   );
 
   // ─────────────────────────────────────────────────────────────────────
@@ -537,10 +593,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const created = await boutiqueApi.sales.create(completedSale);
       const products = await boutiqueApi.products.list(0, 50);
 
+      // Rafraîchir le summary dashboard après chaque vente
+      let dashboardSummary: DashboardSummaryDto | null = null;
+      try {
+        dashboardSummary = await boutiqueApi.dashboard.getSummary();
+      } catch { /* silencieux */ }
+
       setAppState((prev) => ({
         ...prev,
         products,
         sales: [...prev.sales, created],
+        dashboardSummary: dashboardSummary ?? prev.dashboardSummary,
         financialEntries: [
           ...prev.financialEntries,
           makeSaleRevenueEntry(created),
@@ -579,6 +642,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ),
           ],
         }));
+
+        // Rafraîchir le summary dashboard après annulation
+        try {
+          const dashboardSummary = await boutiqueApi.dashboard.getSummary();
+          setAppState((prev) => ({ ...prev, dashboardSummary }));
+        } catch { /* silencieux */ }
       } catch (err: any) {
         alert(err.message || "Échec d'annulation de la vente.");
       }
@@ -701,10 +770,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleInviteUser = useCallback(async (email: string) => {
     try {
       await boutiqueApi.users.inviteEmployee(email);
-      const users = await boutiqueApi.users.list();
-      setAppState((prev) => ({ ...prev, users }));
+      // Ne pas recharger la liste immédiatement — ça causerait un re-render
+      // qui réinitialiserait le formulaire d'invitation.
+      // La liste se mettra à jour au prochain rechargement ou manuellement.
     } catch (err: any) {
-      alert(err.message || "Échec de l'invitation.");
+      alert(err?.response?.data?.message || "Échec de l'invitation.");
     }
   }, []);
 

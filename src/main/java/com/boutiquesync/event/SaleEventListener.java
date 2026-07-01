@@ -11,11 +11,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Écouteur d'événements de vente.
- * Déclenché automatiquement après la création d'une vente.
- * Orchestre :
- * 1. La génération de facture PDF + envoi WhatsApp
- * 2. L'enregistrement des écritures comptables OHADA
- * 3. La mise à jour du dashboard temps réel
+ * Déclenché automatiquement après la création ou l'annulation d'une vente.
  */
 @Component
 @RequiredArgsConstructor
@@ -23,12 +19,9 @@ import org.springframework.stereotype.Component;
 public class SaleEventListener {
 
     private final InvoiceService invoiceService;
-   // private final AccountingService accountingService;
     private final DashboardService dashboardService;
 
-    /**
-     * Listener 1 : Génère la facture et l'envoie par WhatsApp.
-     */
+    /** Listener 1 : Génère la facture et l'envoie par WhatsApp. */
     @EventListener
     @Async
     public void handleInvoiceGeneration(SaleCreatedEvent event) {
@@ -41,31 +34,27 @@ public class SaleEventListener {
         }
     }
 
-    // /**
-    //  * Listener 2 : Enregistre les écritures comptables OHADA.
-    //  */
-    // @EventListener
-    // @Async
-    // public void handleAccountingEntries(SaleCreatedEvent event) {
-    //     try {
-    //         log.info("Enregistrement comptable pour vente: {}", event.sale().getSaleNumber());
-    //         accountingService.recordSaleEntries(event.sale());
-    //     } catch (Exception e) {
-    //         log.error("Erreur enregistrement comptable pour vente {}: {}",
-    //                 event.sale().getSaleNumber(), e.getMessage());
-    //     }
-    // }
-
-    /**
-     * Listener 3 : Rafraîchit le dashboard et pousse via WebSocket.
-     */
+    /** Listener 2 : Rafraîchit le dashboard après une nouvelle vente. */
     @EventListener
     @Async
-    public void handleDashboardRefresh(SaleCreatedEvent event) {
+    public void handleDashboardRefreshOnCreate(SaleCreatedEvent event) {
         try {
             dashboardService.refreshMetrics();
+            log.debug("Dashboard rafraîchi après vente: {}", event.sale().getSaleNumber());
         } catch (Exception e) {
-            log.error("Erreur rafraîchissement dashboard: {}", e.getMessage());
+            log.error("Erreur rafraîchissement dashboard (création): {}", e.getMessage());
+        }
+    }
+
+    /** Listener 3 : Rafraîchit le dashboard après une annulation de vente. */
+    @EventListener
+    @Async
+    public void handleDashboardRefreshOnCancel(SaleCancelledEvent event) {
+        try {
+            dashboardService.refreshMetrics();
+            log.debug("Dashboard rafraîchi après annulation vente: {}", event.sale().getSaleNumber());
+        } catch (Exception e) {
+            log.error("Erreur rafraîchissement dashboard (annulation): {}", e.getMessage());
         }
     }
 }

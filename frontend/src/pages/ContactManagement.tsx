@@ -461,9 +461,9 @@ export default function ContactManagement({
 
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">
                         {actualSpent > 0
-                          ? actualSpent.toLocaleString()
-                          : (c.totalSpent || 0).toLocaleString()}{" "}
-                        €
+                          ? Math.round(actualSpent).toLocaleString('fr-FR')
+                          : Math.round(c.totalSpent || 0).toLocaleString('fr-FR')}{" "}
+                        FCFA
                       </td>
 
                       <td
@@ -517,7 +517,7 @@ export default function ContactManagement({
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                 {filteredSuppliers.map((s) => {
-                  const myProds = products.filter((p) => p.supplierId === s.id);
+                  const myProds = products.filter((p) => (p as any).supplierId === s.id);
                   return (
                     <tr key={s.id} className="hover:bg-slate-50/45 transition">
                       <td className="py-3.5 px-4 font-medium">

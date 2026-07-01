@@ -10,7 +10,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Configuration du cache en mémoire avec Caffeine.
- * Utilisé pour le dashboard, les statistiques et les données fréquemment consultées.
+ * TTL réduit à 60 secondes pour que le dashboard reste proche du temps réel.
+ * L'invalidation manuelle via @CacheEvict est déclenchée après chaque vente,
+ * annulation et ajustement de stock.
  */
 @Configuration
 public class CacheConfig {
@@ -25,7 +27,7 @@ public class CacheConfig {
         );
         cacheManager.setCaffeine(Caffeine.newBuilder()
             .maximumSize(500)
-            .expireAfterWrite(5, TimeUnit.MINUTES)
+            .expireAfterWrite(60, TimeUnit.SECONDS) // 60s au lieu de 5 min
             .recordStats());
         return cacheManager;
     }

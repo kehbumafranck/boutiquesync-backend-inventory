@@ -3,6 +3,7 @@ package com.boutiquesync.controller;
 import com.boutiquesync.dto.ApiResponse;
 import com.boutiquesync.dto.PageResponse;
 import com.boutiquesync.dto.user.CreateUserRequest;
+import com.boutiquesync.dto.user.UserResponse;
 import com.boutiquesync.model.Sale;
 import com.boutiquesync.model.User;
 import com.boutiquesync.security.UserPrincipal;
@@ -23,6 +24,8 @@ import org.springframework.web.bind.annotation.*;
 /**
  * Contrôleur de gestion des utilisateurs.
  * CRUD complet réservé aux administrateurs (sauf lecture de son propre profil).
+ * Toutes les réponses utilisent UserResponse pour ne jamais exposer les champs sensibles
+ * (passwordHash, pin, secrets TOTP, historique de mots de passe, etc.).
  */
 @RestController
 @RequestMapping("/api/users")
@@ -39,8 +42,8 @@ public class UserController {
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Lister les utilisateurs", description = "Retourne la liste paginée des utilisateurs actifs.")
-    public ResponseEntity<ApiResponse<PageResponse<User>>> getAllUsers(Pageable pageable) {
-        Page<User> users = userService.getAllUsers(pageable);
+    public ResponseEntity<ApiResponse<PageResponse<UserResponse>>> getAllUsers(Pageable pageable) {
+        Page<UserResponse> users = userService.getAllUsers(pageable).map(UserResponse::from);
         return ResponseEntity.ok(ApiResponse.success("Utilisateurs récupérés", PageResponse.from(users)));
     }
 
@@ -50,13 +53,13 @@ public class UserController {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Créer un utilisateur", description = "Crée un nouvel employé ou admin.")
-    public ResponseEntity<ApiResponse<User>> createUser(
+    public ResponseEntity<ApiResponse<UserResponse>> createUser(
             @Valid @RequestBody CreateUserRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
 
         User user = userService.createUser(request, principal.id());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Utilisateur créé avec succès", user));
+                .body(ApiResponse.success("Utilisateur créé avec succès", UserResponse.from(user)));
     }
 
     /**
@@ -65,9 +68,9 @@ public class UserController {
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or #id == authentication.principal.id")
     @Operation(summary = "Récupérer un utilisateur", description = "Retourne les détails d'un utilisateur.")
-    public ResponseEntity<ApiResponse<User>> getUserById(@PathVariable String id) {
+    public ResponseEntity<ApiResponse<UserResponse>> getUserById(@PathVariable String id) {
         User user = userService.getUserById(id);
-        return ResponseEntity.ok(ApiResponse.success("Utilisateur récupéré", user));
+        return ResponseEntity.ok(ApiResponse.success("Utilisateur récupéré", UserResponse.from(user)));
     }
 
     /**
@@ -75,9 +78,9 @@ public class UserController {
      */
     @GetMapping("/me")
     @Operation(summary = "Mon profil", description = "Retourne le profil de l'utilisateur connecté.")
-    public ResponseEntity<ApiResponse<User>> getMyProfile(@AuthenticationPrincipal UserPrincipal principal) {
+    public ResponseEntity<ApiResponse<UserResponse>> getMyProfile(@AuthenticationPrincipal UserPrincipal principal) {
         User user = userService.getUserById(principal.id());
-        return ResponseEntity.ok(ApiResponse.success("Profil récupéré", user));
+        return ResponseEntity.ok(ApiResponse.success("Profil récupéré", UserResponse.from(user)));
     }
 
     /**
@@ -100,12 +103,12 @@ public class UserController {
     @PatchMapping("/{id}/activate")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Activer un utilisateur", description = "Réactive un utilisateur désactivé.")
-    public ResponseEntity<ApiResponse<User>> activateUser(
+    public ResponseEntity<ApiResponse<UserResponse>> activateUser(
             @PathVariable String id,
             @AuthenticationPrincipal UserPrincipal principal) {
 
         User user = userService.activateUser(id, principal.id());
-        return ResponseEntity.ok(ApiResponse.success("Utilisateur activé", user));
+        return ResponseEntity.ok(ApiResponse.success("Utilisateur activé", UserResponse.from(user)));
     }
 
     /**
@@ -114,12 +117,12 @@ public class UserController {
     @PatchMapping("/{id}/deactivate")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Désactiver un utilisateur", description = "Désactive un utilisateur.")
-    public ResponseEntity<ApiResponse<User>> deactivateUser(
+    public ResponseEntity<ApiResponse<UserResponse>> deactivateUser(
             @PathVariable String id,
             @AuthenticationPrincipal UserPrincipal principal) {
 
         User user = userService.deactivateUser(id, principal.id());
-        return ResponseEntity.ok(ApiResponse.success("Utilisateur désactivé", user));
+        return ResponseEntity.ok(ApiResponse.success("Utilisateur désactivé", UserResponse.from(user)));
     }
 
     /**

@@ -8,6 +8,7 @@ import com.boutiquesync.repository.ProductRepository;
 import com.boutiquesync.repository.StockMovementRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -36,11 +37,13 @@ public class InventoryService {
      * @param productId   ID du produit
      * @param newQuantity Nouvelle quantité en stock
      * @param note        Note explicative de l'ajustement
-     * @param performedBy ID de l'utilisateur effectuant l'ajustement
+     * @param performedBy     ID de l'utilisateur effectuant l'ajustement
+     * @param performedByName Nom de l'utilisateur (pour affichage)
      * @return Le mouvement de stock créé
      */
     @Transactional
-    public StockMovement adjustStock(String productId, int newQuantity, String note, String performedBy) {
+    @CacheEvict(value = {"dashboard", "stockAlerts"}, allEntries = true)
+    public StockMovement adjustStock(String productId, int newQuantity, String note, String performedBy, String performedByName) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new BusinessException("Produit non trouvé", "PRODUCT_NOT_FOUND"));
 
@@ -60,13 +63,14 @@ public class InventoryService {
                 .quantityChange(quantityChange)
                 .quantityAfter(newQuantity)
                 .performedBy(performedBy)
+                .performedByName(performedByName != null ? performedByName : performedBy)
                 .note(note)
                 .build();
 
         movement = stockMovementRepository.save(movement);
 
         auditService.logAction(performedBy, null, "STOCK_ADJUSTMENT",
-                "PRODUCT", productId, true);
+                "PRODUCT", productId, product.getName(), null, null, true);
 
         log.info("Ajustement stock: {} ({} → {})", product.getName(), quantityBefore, newQuantity);
         return movement;

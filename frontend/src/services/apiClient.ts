@@ -21,6 +21,7 @@ import {
   ApiEnvelope,
   AuthUserInfo,
   Client,
+  DashboardSummaryDto,
   LoginResponseDto,
   Product,
   Sale,
@@ -49,7 +50,9 @@ export interface ApiConfig {
 
 /** Valeurs par défaut utilisées au premier lancement. */
 const DEFAULT_CONFIG: ApiConfig = {
-  baseUrl: "http://192.168.43.138:8085/api",
+  // En prod, on lit VITE_API_URL depuis les variables d'environnement Vite.
+  // En dev, on retombe sur l'IP du serveur local.
+  baseUrl: import.meta.env.VITE_API_URL ?? "http://localhost:8085/api",
 };
 
 /**
@@ -93,8 +96,9 @@ export function mapBackendProductToFrontend(bp: any): Product {
   return {
     id: bp.id,
     name: bp.name ?? "Produit sans nom",
-    reference: bp.barcode ?? bp.id ?? "REF-GEN", // pas de champ reference côté backend, on retombe sur le barcode
+    reference: bp.barcode ?? bp.id ?? "REF-GEN",
     barcode: bp.barcode ?? "",
+    category: bp.categoryId ?? bp.category ?? "",
     purchasePrice: bp.purchasePrice ?? 0,
     sellingPrice: bp.sellingPrice ?? 0,
     vatRate: bp.vatRate ?? 19.25,
@@ -186,19 +190,47 @@ function mapBackendMovementToFrontend(m: any): StockMovement {
   const typeMap: Record<string, StockMovement["type"]> = {
     SALE_OUT: "OUT",
     SUPPLIER_IN: "IN",
+    RETURN: "IN",
+    ADJUSTMENT: "ADJUSTMENT_ADD",
   };
   return {
-    id: m.id ?? `mov-spring-${Date.now()}`,
+    id: m.id ?? `mov-${Date.now()}`,
     productId: m.productId,
     productName: m.productName ?? "Article",
     type: typeMap[m.type] ?? "INVENTORY",
-    quantity: Math.abs(m.quantityChange),
-    previousQuantity: m.quantityBefore,
-    newQuantity: m.quantityAfter,
-    reason: m.note ?? "Mouvement de stock enregistré",
-    createdBy: m.performedBy ?? "Spring System",
+    quantity: Math.abs(m.quantityChange ?? 0),
+    previousQuantity: m.quantityBefore ?? 0,
+    newQuantity: m.quantityAfter ?? 0,
+    reason: m.note ?? "Mouvement de stock",
+    // Priorité au nom dénormalisé, fallback sur l'email/ID
+    createdBy: m.performedByName ?? m.performedBy ?? "Système",
     createdAt: m.createdAt ?? new Date().toISOString(),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS — mapping des actions d'audit vers les types frontend
+// ─────────────────────────────────────────────────────────────────────────────
+
+function mapActionToModule(action: string): string {
+  const map: Record<string, string> = {
+    LOGIN: 'AUTH', LOGOUT: 'AUTH', PASSWORD_CHANGE: 'AUTH',
+    ADMIN_CREATED: 'AUTH', '2FA_VERIFY': 'AUTH', LOGIN_FAILED: 'AUTH',
+    USER_CREATE: 'ADMIN', USER_ACTIVATE: 'ADMIN', USER_DEACTIVATE: 'ADMIN',
+    USER_DELETE: 'ADMIN', EMPLOYEE_INVITED: 'ADMIN',
+    SALE_CREATE: 'SALES', SALE_CANCEL: 'SALES',
+    PRODUCT_CREATE: 'PRODUCTS', PRODUCT_MODIFY: 'PRODUCTS', PRODUCT_DELETE: 'PRODUCTS',
+    STOCK_ADJUSTMENT: 'STOCK',
+  };
+  return map[action] ?? 'ADMIN';
+}
+
+function mapActionToSeverity(action: string): string {
+  const critical = ['PRODUCT_DELETE', 'USER_DELETE', 'SALE_CANCEL', 'LOGIN_FAILED'];
+  const warning  = ['USER_DEACTIVATE', 'STOCK_ADJUSTMENT', 'PASSWORD_CHANGE'];
+  if (critical.includes(action)) return 'CRITICAL';
+  if (warning.includes(action))  return 'WARNING';
+  return 'INFO';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -378,24 +410,31 @@ export const boutiqueApi = {
   // ── TABLEAU DE BORD ───────────────────────────────────────────────────────
 
   dashboard: {
-    /** KPIs globaux : CA, commandes, marge, etc. */
-    async getSummary() {
-      const { data } = await axiosInstance.get(url("/dashboard/summary"));
-      return data;
+    /**
+     * KPIs complets du tableau de bord calculés côté backend sur toute la BD.
+     * Inclut : Jour, Semaine, Mois, Marge, Graphe 30j, Alertes stock.
+     */
+    async getSummary(): Promise<DashboardSummaryDto> {
+      const { data: envelope } = await axiosInstance.get<ApiEnvelope<DashboardSummaryDto>>(
+        url("/dashboard/summary"),
+      );
+      return envelope.data;
     },
 
     /** Top produits du mois courant (limite à 10). */
     async getTopProducts() {
-      const { data } = await axiosInstance.get(
+      const { data: envelope } = await axiosInstance.get<ApiEnvelope<any>>(
         url("/dashboard/top-products?period=month&limit=10"),
       );
-      return data;
+      return envelope.data;
     },
 
     /** Produits dont le stock est sous le seuil d'alerte. */
     async getStockAlerts() {
-      const { data } = await axiosInstance.get(url("/dashboard/stock-alerts"));
-      return data;
+      const { data: envelope } = await axiosInstance.get<ApiEnvelope<any>>(
+        url("/dashboard/stock-alerts"),
+      );
+      return envelope.data;
     },
   },
 
@@ -412,17 +451,17 @@ export const boutiqueApi = {
     },
 
     /**
-     * Ajuste le stock d'un produit par delta (positif = entrée, négatif = sortie).
-     * `note` est la raison affichée dans l'historique des mouvements.
+     * Ajuste le stock d'un produit.
+     * Envoie la nouvelle quantité absolue attendue par le backend.
      */
     async adjustStock(
       productId: string,
-      quantityChange: number,
+      newQuantity: number,
       note: string,
     ): Promise<void> {
       await axiosInstance.post(url("/inventory/adjust"), {
         productId,
-        quantityChange,
+        newQuantity,
         note,
       });
     },
@@ -433,16 +472,19 @@ export const boutiqueApi = {
   users: {
     /** Récupère la liste de tous les utilisateurs et la normalise. */
     async list(): Promise<User[]> {
-      const { data: envelope } = await axiosInstance.get<ApiEnvelope<any[]>>(
+      const { data: envelope } = await axiosInstance.get<ApiEnvelope<any>>(
         url("/users"),
       );
-      return (envelope.data ?? []).map((bu) => ({
+      // La pagination Spring retourne { content: [...], ... }
+      const content = envelope.data?.content ?? envelope.data ?? [];
+      return (content as any[]).map((bu) => ({
         id: bu.id,
         firstName: bu.firstName ?? "Sans",
         lastName: bu.lastName ?? "Nom",
         email: bu.email,
         username: bu.email.split("@")[0],
         role: bu.role === "ADMIN" ? "ADMIN" : "EMPLOYEE",
+        // UserResponse expose `active` (boolean), on le convertit en status UI
         status: bu.active ? "ACTIVE" : "SUSPENDED",
         mfaEnabled: bu.twoFactorEnabled ?? false,
         createdAt: bu.createdAt ?? new Date().toISOString(),
@@ -462,14 +504,90 @@ export const boutiqueApi = {
 
     /** Réactive un compte utilisateur suspendu. */
     async activateUser(id: string) {
-      const { data } = await axiosInstance.put(url(`/users/${id}/activate`));
+      const { data } = await axiosInstance.patch(url(`/users/${id}/activate`));
       return data;
     },
 
     /** Suspend un compte utilisateur actif. */
     async deactivateUser(id: string) {
-      const { data } = await axiosInstance.put(url(`/users/${id}/deactivate`));
+      const { data } = await axiosInstance.patch(url(`/users/${id}/deactivate`));
       return data;
+    },
+  },
+
+  // ── JOURNAL D'AUDIT ──────────────────────────────────────────────────────
+
+  auditLogs: {
+    async list(page = 0, size = 100): Promise<any[]> {
+      const { data: envelope } = await axiosInstance.get<ApiEnvelope<any>>(
+        url(`/audit-logs?page=${page}&size=${size}&sort=timestamp,desc`),
+      );
+      const content = envelope.data?.content ?? [];
+      return (content as any[]).map((log) => ({
+        id: log.id,
+        timestamp: log.timestamp,
+        action: log.action,
+        module: mapActionToModule(log.action),
+        performedBy: log.userEmail ?? log.userId ?? 'système',
+        // Affiche : "NomRessource (TYPE #id)" si disponible, sinon "TYPE #id"
+        details: log.resourceName
+          ? `${log.resourceName} · ${log.resourceType ?? ''}${log.resourceId ? ' #' + log.resourceId : ''}`
+          : log.resourceType
+            ? `${log.resourceType}${log.resourceId ? ' #' + log.resourceId : ''}`
+            : '',
+        severity: mapActionToSeverity(log.action),
+      }));
+    },
+
+    async deleteOne(id: string): Promise<void> {
+      await axiosInstance.delete(url(`/audit-logs/${id}`));
+    },
+
+    async deleteAll(): Promise<void> {
+      await axiosInstance.delete(url('/audit-logs'));
+    },
+  },
+
+  // ── COMPTABILITÉ ─────────────────────────────────────────────────────────
+
+  accounting: {
+    /** Bilan comptable du mois courant calculé depuis les ventes MongoDB. */
+    async getSummary() {
+      const { data: envelope } = await axiosInstance.get<ApiEnvelope<any>>(
+        url('/accounting/summary'),
+      );
+      return envelope.data;
+    },
+  },
+
+  // ── INVITATIONS EMPLOYÉS ─────────────────────────────────────────────────
+
+  invitations: {
+    /**
+     * Vérifie la validité d'un token d'invitation.
+     * Appelé au montage de CompleteRegistration pour valider le lien avant
+     * d'afficher le formulaire.
+     * @throws AxiosError si le token est invalide ou expiré
+     */
+    async verifyToken(token: string): Promise<void> {
+      await axiosInstance.get(
+        url(`/employees/invite/verify?token=${encodeURIComponent(token)}`),
+      );
+    },
+
+    /**
+     * Finalise l'inscription d'un employé invité.
+     * L'email est résolu côté backend à partir du token (sécurité : pas d'injection d'email).
+     * @throws AxiosError si le token a expiré entre la vérification et la soumission
+     */
+    async completeRegistration(payload: {
+      token: string;
+      firstName: string;
+      lastName: string;
+      password: string;
+      phoneNumber: string | null;
+    }): Promise<void> {
+      await axiosInstance.post(url("/employees/invite/complete"), payload);
     },
   },
 

@@ -48,6 +48,16 @@ export default function Topbar({
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Marquer toutes les notifications comme lues à l'ouverture du panel
+  const handleToggleNotifications = () => {
+    const nextState = !showNotifications;
+    setShowNotifications(nextState);
+    if (nextState) {
+      // On marque chaque notification non lue dès que l'utilisateur ouvre le panel
+      notifications.filter(n => !n.read).forEach(n => onMarkNotificationRead(n.id));
+    }
+  };
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
@@ -221,7 +231,7 @@ export default function Topbar({
           <button
             id="topbar-notifications-bell-cmp"
             type="button"
-            onClick={() => setShowNotifications(!showNotifications)}
+            onClick={handleToggleNotifications}
             className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900 cursor-pointer"
           >
             <Bell className="h-4 w-4" />

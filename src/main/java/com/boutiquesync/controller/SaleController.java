@@ -98,4 +98,12 @@ public class SaleController {
         List<Sale> sales = saleService.getTodaySales();
         return ResponseEntity.ok(ApiResponse.success("Ventes du jour", sales));
     }
+
+   @GetMapping("/toweek")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Ventes de la semaine", description = "Retourne toutes les ventes effectuées dans la semaine ")
+    public ResponseEntity<ApiResponse<List<Sale>>> getToWeekSale() {
+        List<Sale> sales = saleService.getToWeekSales();
+        return ResponseEntity.ok(ApiResponse.success("Ventes de la semaine", sales));
+    }
 }

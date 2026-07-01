@@ -31,4 +31,6 @@ public interface ProductRepository extends MongoRepository<Product, String> {
     List<Product> findDistinctCategories();
 
     List<Product> findByIdIn(List<String> ids);
+
+    boolean existsByName(String name);
 }

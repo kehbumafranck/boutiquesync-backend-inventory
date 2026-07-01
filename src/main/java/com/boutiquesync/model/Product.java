@@ -46,8 +46,8 @@ public class Product {
     @Indexed(sparse = true)
     private String barcode;
 
-    // /** Identifiant de la catégorie */
-    // private String categoryId;
+    /** Identifiant de la catégorie */
+    private String categoryId;
 
     /** Prix d'achat (coût fournisseur) */
     @NotNull(message = "Le prix d'achat est obligatoire")

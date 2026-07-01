@@ -16,7 +16,7 @@ spring:
       mail.smtp.starttls.enable: true
 
 server:
-  port: 8085
+  port: ${SERVER_PORT:8085}
   error:
     include-message: never
     include-stacktrace: never
@@ -24,7 +24,7 @@ server:
 boutiquesync:
   security:
     jwt:
-      cookie-secure: ${COOKIE_SECURE:true}
+      cookie-secure: ${COOKIE_SECURE:false}
       cookie-same-site: ${COOKIE_SAME_SITE:Lax}
       secret: ${JWT_SECRET}
       access-token-expiry: 900
@@ -86,7 +86,7 @@ spring:
       on-profile: dev
   data:
     mongodb:
-      uri: mongodb://localhost:27017/boutiquesync
+      uri: ${MONGODB_URI:mongodb://localhost:27017/boutiquesync} 
       auto-index-creation: true
 
 logging:

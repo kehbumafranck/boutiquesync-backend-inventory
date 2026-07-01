@@ -2,6 +2,7 @@ package com.boutiquesync.service;
 
 import com.boutiquesync.dto.sale.CreateSaleRequest;
 import com.boutiquesync.dto.sale.SaleItemRequest;
+import com.boutiquesync.event.SaleCancelledEvent;
 import com.boutiquesync.event.SaleCreatedEvent;
 import com.boutiquesync.event.StockAlertEvent;
 import com.boutiquesync.exception.BusinessException;
@@ -21,9 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 //                                                                                                                                                                                        import java.time.Year;
 import java.util.ArrayList;
 import java.util.List;
@@ -147,6 +152,7 @@ public class SaleService {
                     .quantityAfter(quantityAfter)
                     .referenceId(sale.getId())
                     .performedBy(employeeId)
+                    .performedByName(employeeName)
                     .note("Vente " + saleNumber)
                     .build();
             stockMovementRepository.save(movement);
@@ -162,7 +168,7 @@ public class SaleService {
 
         // 5. Audit
         auditService.logAction(employeeId, employeeName, "SALE_CREATE",
-                "SALE", sale.getId(), true);
+                "SALE", sale.getId(), sale.getSaleNumber(), null, null, true);
 
         log.info("Vente créée: {} - Montant: {} XAF", saleNumber, totalAmount);
         return sale;
@@ -205,6 +211,7 @@ public class SaleService {
                     .quantityAfter(quantityAfter)
                     .referenceId(sale.getId())
                     .performedBy(cancelledBy)
+                    .performedByName(cancelledBy)
                     .note("Annulation vente " + sale.getSaleNumber() + ": " + reason)
                     .build();
             stockMovementRepository.save(movement);
@@ -217,7 +224,10 @@ public class SaleService {
         sale = saleRepository.save(sale);
 
         auditService.logAction(cancelledBy, null, "SALE_CANCEL",
-                "SALE", sale.getId(), true);
+                "SALE", sale.getId(), sale.getSaleNumber(), null, null, true);
+
+        // Publier l'événement d'annulation pour invalider le cache dashboard
+        eventPublisher.publishEvent(new SaleCancelledEvent(sale));
 
         log.info("Vente annulée: {} - Raison: {}", sale.getSaleNumber(), reason);
         return sale;
@@ -246,6 +256,51 @@ public class SaleService {
         LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
         return saleRepository.findByCreatedAtBetweenAndStatus(startOfDay, endOfDay, SaleStatus.COMPLETED);
     }
+    /**
+     * Récupère les ventes de la semaine.
+     */
+    public List<Sale>getToWeekSales(){
+        ZonedDateTime now =ZonedDateTime.now(ZoneId.of("UT"));
+
+        ZonedDateTime startOfWeek=now
+        .with(DayOfWeek.MONDAY)
+        .withHour(0)
+        .withMinute(0)
+        .withSecond(0)
+        .withNano(0);
+        // 3. Convertir en Instant pour correspondre au type stocké dans MongoDB
+        Instant start = startOfWeek.toInstant();
+        Instant end = now.toInstant(); // On s'arrête au moment présent
+
+        // 4. Appeler le repository
+        return saleRepository.findByCreatedAtBetween(start, end);
+    }
+    
+    // public List<MonthlySaleStat> getMonthlySalesStatistics() {
+    //     Aggregation aggregation = Aggregation.newAggregation(
+    //         // Étape 1 : Extraire l'année et le mois sous forme de chaîne (ex: "2026-06")
+    //         Aggregation.project("total", "status")
+    //             .andExpression("dateToString('%Y-%m', createdAt)").as("month"),
+                
+    //         // Étape 2 : Filtrer pour exclure les ventes annulées si nécessaire
+    //         Aggregation.match(org.springframework.data.mongodb.core.query.Criteria.where("status").ne("CANCELLED")),
+            
+    //         // Étape 3 : Grouper par mois et calculer les statistiques
+    //         Aggregation.group("month")
+    //             .first("month").as("month")
+    //             .sum("total").as("totalRevenue")
+    //             .count().as("totalSalesCount"),
+                
+    //         // Étape 4 : Trier par mois chronologique
+    //         Aggregation.sort(org.springframework.data. someSortDirection.ASC, "month")
+    //     );
+
+    //     AggregationResults<MonthlySaleStat> results = mongoTemplate.aggregate(
+    //         aggregation, "sales", MonthlySaleStat.class
+    //     );
+
+    //     return results.getMappedResults();
+    // }
 
     /**
      * Récupère les ventes d'un employé.

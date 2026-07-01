@@ -238,11 +238,11 @@ export default function PosTerminal({
       'Vente finalisée',
       'POS',
       operatorName,
-      `Vente ${finalSaleId} complétée par ${operatorName} (${clientName}). Total: ${total.toFixed(2)} EUR. Paiement: ${paymentMethod}`,
+      `Vente ${finalSaleId} complétée par ${operatorName} (${clientName}). Total: ${total.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA. Paiement: ${paymentMethod}`,
       'INFO'
     );
 
-    // If client had registered loyalty account, gain points (10 pt per 50 EUR spent)
+    // If client had registered loyalty account, gain points (10 pt per 50 FCFA spent)
     if (selectedClient && total > 50) {
       const addedPoints = Math.floor(total / 50) * 10;
       selectedClient.loyaltyPoints += addedPoints;
@@ -300,8 +300,8 @@ export default function PosTerminal({
             
             {/* Top receipt head */}
             <div className="text-center">
-              <span className="text-base font-extrabold tracking-tight block">TICKETS NEXUS PME</span>
-              <span className="text-[10px] text-slate-400 block mt-0.5">SNC 12 RUE DE PARIS, FR</span>
+              <span className="text-base font-extrabold tracking-tight block">TICKETS boutique PME</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">SNC Yaoundé</span>
               <span className="text-[9px] text-slate-400 block">Siret: 124 542 121 00010</span>
             </div>
 
@@ -323,8 +323,8 @@ export default function PosTerminal({
                 {sale.items.map((it, idx) => (
                   <div key={idx} className="flex justify-between pt-1">
                     <span className="truncate max-w-[150px] font-semibold">{it.productName}</span>
-                    <span className="w-16 text-center">{it.quantity} x {it.unitPrice.toFixed(0)}€</span>
-                    <span className="text-right font-bold">{it.totalPrice.toFixed(2)} €</span>
+                    <span className="w-16 text-center">{it.quantity} x {it.unitPrice.toLocaleString('fr-FR')} FCFA</span>
+                    <span className="text-right font-bold">{it.totalPrice.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
                   </div>
                 ))}
               </div>
@@ -334,21 +334,21 @@ export default function PosTerminal({
             <div className="border-t border-dashed border-slate-350 pt-3 font-semibold space-y-1">
               <div className="flex justify-between text-slate-500">
                 <span>Sous-total HT :</span>
-                <span>{sale.subTotal.toFixed(2)} €</span>
+                <span>{sale.subTotal.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
               </div>
               {sale.discountAmount > 0 && (
                 <div className="flex justify-between text-rose-650 text-rose-700">
                   <span>Remises cumulées :</span>
-                  <span>-{sale.discountAmount.toFixed(2)} €</span>
+                  <span>-{sale.discountAmount.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
                 </div>
               )}
               <div className="flex justify-between text-slate-500">
                 <span>TVA collectée :</span>
-                <span>{sale.taxAmount.toFixed(2)} €</span>
+                <span>{sale.taxAmount.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
               </div>
               <div className="flex justify-between text-base font-black text-slate-950 pt-1.5 border-t border-dotted border-slate-305">
                 <span>TOTAL PAYÉ :</span>
-                <span>{sale.total.toFixed(2)} EUR</span>
+                <span>{sale.total.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
               </div>
             </div>
 
@@ -477,10 +477,10 @@ export default function PosTerminal({
                         <td className="py-3 px-4 max-w-xs truncate text-[11px] text-slate-500">
                           {sale.items.map(it => `${it.productName} (x${it.quantity})`).join(', ')}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-500">{sale.subTotal.toFixed(2)} €</td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-400">{sale.taxAmount.toFixed(2)} €</td>
-                        <td className="py-3 px-4 text-right font-mono text-rose-500">-{sale.discountAmount.toFixed(2)} €</td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-950">{sale.total.toFixed(2)} €</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-500">{sale.subTotal.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-400">{sale.taxAmount.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</td>
+                        <td className="py-3 px-4 text-right font-mono text-rose-500">-{sale.discountAmount.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-950">{sale.total.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</td>
                         <td className="py-3 px-4 text-center">
                           <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded font-bold">
                             {sale.paymentMethod}
@@ -630,7 +630,7 @@ export default function PosTerminal({
                       <div className="min-w-0 flex-1">
                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest font-mono">{p.category}</span>
                         <h4 className="text-xs font-bold text-slate-900 truncate leading-tight mt-0.5">{p.name}</h4>
-                        <p className="text-[10px] font-mono font-bold text-slate-700 mt-1">{p.sellingPrice.toFixed(2)} €</p>
+                        <p className="text-[10px] font-mono font-bold text-slate-700 mt-1">{p.sellingPrice.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</p>
                       </div>
                     </div>
 
@@ -657,28 +657,29 @@ export default function PosTerminal({
               <div className="flex gap-2">
                 {/* Client select */}
                 <div className="flex-1">
-                  <select
+                  {/* <select
                     value={selectedClientId}
                     onChange={(e) => setSelectedClientId(e.target.value)}
                     className="w-full border border-slate-200 bg-white rounded-xl px-3 py-1.5 text-xs text-slate-750 focus:outline-none focus:ring-1 focus:ring-slate-950 font-semibold"
                   >
-                    <option value="generic_passerby">👥 Passager Éphémère (Pas de fidélité)</option>
+                    <option value="generic_passerby">Effectue une vente</option>
                     {clients.map((c) => (
                       <option key={c.id} value={c.id}>
                         👤 {c.name} ({c.loyaltyPoints}pts)
                       </option>
                     ))}
-                  </select>
+                  </select> */}
+                  <p className="w-full border border-slate-200 bg-white rounded-xl px-3 py-1.5 text-xs text-slate-750 focus:outline-none focus:ring-1 focus:ring-slate-950 font-semibold">Effectue une vente </p>
                 </div>
                 
-                <button
+                {/* <button
                   type="button"
                   onClick={() => alert("Simulation d'invitation client. Renseignez directement ses coordonnées dans l'onglet 'Clients'.")}
                   className="p-1 px-2.5 border border-slate-200 bg-white hover:bg-slate-50 rounded-xl cursor-pointer"
                   title="Ajouter un client"
                 >
                   <UserPlus className="h-4 w-4 text-slate-650" />
-                </button>
+                </button> */}
               </div>
             </div>
 
@@ -696,7 +697,7 @@ export default function PosTerminal({
                     <div className="flex justify-between items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-slate-900 truncate">{item.productName}</p>
-                        <span className="text-[10px] text-slate-400 font-mono">P.U: {item.unitPrice.toFixed(2)} €</span>
+                        <span className="text-[10px] text-slate-400 font-mono">P.U: {item.unitPrice.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
                       </div>
                       
                       <button
@@ -759,7 +760,7 @@ export default function PosTerminal({
 
                       {/* Cumulative item value */}
                       <span className="font-mono text-xs font-bold text-slate-950">
-                        {((item.quantity * item.unitPrice) * (1 - item.discount/100)).toFixed(2)} €
+                        {((item.quantity * item.unitPrice) * (1 - item.discount/100)).toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA
                       </span>
 
                     </div>
@@ -773,24 +774,24 @@ export default function PosTerminal({
               <div className="space-y-1.5 text-xs font-medium">
                 <div className="flex justify-between text-slate-500">
                   <span>Sous-total HT :</span>
-                  <span className="font-mono">{subTotal.toFixed(2)} €</span>
+                  <span className="font-mono">{subTotal.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
                 </div>
                 
                 {discountAmount > 0 && (
                   <div className="flex justify-between text-rose-650 text-rose-700 font-semibold">
                     <span>Remises déduites :</span>
-                    <span className="font-mono">-{discountAmount.toFixed(2)} €</span>
+                    <span className="font-mono">-{discountAmount.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
                   </div>
                 )}
 
                 <div className="flex justify-between text-slate-500 border-b border-slate-200/50 pb-1.5">
                   <span>Taxes sur valeur ajoutée (TVA) :</span>
-                  <span className="font-mono">{taxAmount.toFixed(2)} €</span>
+                  <span className="font-mono">{taxAmount.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
                 </div>
 
                 <div className="flex justify-between text-sm font-black text-slate-950 pt-1">
                   <span>NET À PAYER TTC :</span>
-                  <span className="text-base font-black font-mono">{total.toFixed(2)} €</span>
+                  <span className="text-base font-black font-mono">{total.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</span>
                 </div>
               </div>
 

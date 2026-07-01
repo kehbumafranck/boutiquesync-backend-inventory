@@ -1,186 +1,272 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * Dashboard.tsx — Tableau de bord temps réel.
+ *
+ * Source des données :
+ *  - KPIs (jour/semaine/mois, marge, graphe 30j) → DashboardSummaryDto
+ *    calculé côté backend sur TOUTE la base de données MongoDB.
+ *  - Alertes stock + dernières ventes → products[] et sales[] du state global.
+ *  - Vue employé → sales[] filtrés localement (ses propres ventes).
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Package,
-  Layers,
   Archive,
   ShoppingBag,
   CircleDollarSign,
-  Users2,
-  Building,
   UserCheck2,
   AlertOctagon,
   ArrowRight,
   TrendingUp,
+  TrendingDown,
   ShieldAlert,
   Clock,
   Sparkles,
   ShoppingBagIcon,
   FileText,
-  TrendingDown,
-  Percent,
-  CheckCircle,
   Award,
   Flame,
-  Target
+  Target,
+  CalendarDays,
+  BarChart3,
+  Percent,
 } from 'lucide-react';
-import { Product, Client, Supplier, User, Sale, SecurityEvent, AuditLog } from '../types';
+import { Product, User, Sale, SecurityEvent, AuditLog, DashboardSummaryDto, RecentSale, DashboardSecurityEvent, WeeklyRevenue } from '../types';
 import { CATEGORIES } from '../mockData';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface DashboardProps {
   products: Product[];
-  clients: Client[];
-  suppliers: Supplier[];
+  // clients: Client[];    // TODO : à connecter dans la prochaine MàJ
+  // suppliers: Supplier[]; // TODO : à connecter dans la prochaine MàJ
+  clients: any[];
+  suppliers: any[];
   users: User[];
   sales: Sale[];
   securityEvents: SecurityEvent[];
   auditLogs?: AuditLog[];
+  /** KPIs calculés côté backend — null pendant le chargement initial */
+  dashboardSummary: DashboardSummaryDto | null;
   onNavigate: (tab: any) => void;
   onSelectSaleForInvoice: (sale: Sale) => void;
   currentUser?: User;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers de dates — tout est calculé dynamiquement
+// ─────────────────────────────────────────────────────────────────────────────
+
+function toDateStr(d: Date): string {
+  return d.toISOString().substring(0, 10); // "YYYY-MM-DD"
+}
+
+function getDateRange() {
+  const now = new Date();
+  const todayStr = toDateStr(now);
+
+  // Début de semaine (lundi)
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const weekStartStr = toDateStr(weekStart);
+
+  // Début de mois
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthStartStr = toDateStr(monthStart);
+
+  return { todayStr, weekStartStr, monthStartStr, now };
+}
+
+/** Calcule les 30 derniers jours glissants */
+function getLast30Days(): string[] {
+  const days: string[] = [];
+  const now = new Date();
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    days.push(toDateStr(d));
+  }
+  return days;
+}
+
+function formatFcfa(n: number): string {
+  return Math.round(n).toLocaleString('fr-FR') + ' FCFA';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Composant principal
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function Dashboard({
   products,
-  clients,
-  suppliers,
+  // clients,    // TODO
+  // suppliers,  // TODO
   users,
   sales,
   securityEvents,
   auditLogs = [],
+  dashboardSummary,
   onNavigate,
   onSelectSaleForInvoice,
-  currentUser
+  currentUser,
 }: DashboardProps) {
-  const [hoveredMetric, setHoveredMetric] = useState<string | null>(null);
   const [objectivesEnabled, setObjectivesEnabled] = useState(true);
 
-  const userFullName = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : "";
+  const userFullName = currentUser
+    ? `${currentUser.firstName} ${currentUser.lastName}`
+    : '';
   const isEmployee = currentUser?.role === 'EMPLOYEE';
 
-  // Date boundary: 2026-06-09 (Simulate June 9, 2026)
-  const todayStr = "2026-06-09";
+  // ── Calculs de dates ──────────────────────────────────────────────────────
+  const { todayStr, weekStartStr: _w, monthStartStr: _m } = useMemo(
+    () => getDateRange(),
+    [],
+  );
 
-  // ----------------------------------------------------
-  // A. EMPLOYEE-SPECIFIC METRICS COMPUTATION
-  // ----------------------------------------------------
-  // Filter sales recorded by this employee specifically
-  const personalSales = sales.filter(s => s.createdBy.toLowerCase() === userFullName.toLowerCase() && s.status === 'COMPLETED');
-  const personalSalesCount = personalSales.length;
+  const last30Days = useMemo(() => getLast30Days(), []);
 
-  // Let's also fetch sales completed today or yesterday if today has zero sales, for better demo visualization.
-  // Actually, let's filter purely by simulated date (2026-06-09 OR 2026-06-08 since her sales in custom mockData are on June 8th)
-  const personalTodaySales = personalSales.filter(s => s.createdAt.startsWith(todayStr) || s.createdAt.startsWith("2026-06-08"));
-  const personalTodaySalesCount = personalTodaySales.length;
+  // ── Ventes de l'employé (calculées localement sur les 50 dernières ventes) ─
+  const completedSales = useMemo(
+    () => sales.filter((s) => s.status === 'COMPLETED'),
+    [sales],
+  );
 
-  // Personal generated invoices quantity is equal to personal completed sales count
+  const personalSales = completedSales.filter(
+    (s) => s.createdBy.toLowerCase() === userFullName.toLowerCase(),
+  );
+  const personalTodaySales = personalSales.filter((s) =>
+    s.createdAt.startsWith(todayStr),
+  );
   const personalInvoicesCount = personalSales.length;
 
-  // Products recently sold by this employee specifically
-  const personalRecentProductsSold: { productName: string; quantity: number; date: string; total: number; id: string }[] = [];
-  personalSales.slice().reverse().slice(0, 5).forEach(sale => {
-    sale.items.forEach(it => {
-      personalRecentProductsSold.push({
-        id: it.productId,
-        productName: it.productName,
-        quantity: it.quantity,
-        date: sale.createdAt,
-        total: it.totalPrice
-      });
-    });
-  });
+  const personalLogs = auditLogs.filter(
+    (log) => log.performedBy.toLowerCase() === userFullName.toLowerCase(),
+  );
+  const personalActivities =
+    personalLogs.length > 0
+      ? personalLogs
+      : personalSales.map((sale) => ({
+          id: sale.id,
+          timestamp: sale.createdAt,
+          action: 'Enregistrement de vente',
+          details: `Vente pour ${sale.clientName} — ${formatFcfa(sale.total)}`,
+          severity: 'INFO' as const,
+        }));
 
-  // Personal activities (audit log items generated by this user or fallback to sales)
-  const personalLogs = auditLogs.filter(log => log.performedBy.toLowerCase() === userFullName.toLowerCase());
-  const personalActivities = personalLogs.length > 0 ? personalLogs : personalSales.map(sale => ({
-    id: sale.id,
-    timestamp: sale.createdAt,
-    action: "Enregistrement de vente",
-    details: `Vente effectuée pour client ${sale.clientName}. Total: ${sale.total.toFixed(2)} €`,
-    severity: 'INFO' as const
-  }));
-
-  // Personal goals (5 daily sales, 20 monthly sales)
   const dailyTarget = 5;
   const monthlyTarget = 20;
-  const dailyProgressPercent = Math.min(100, Math.round((personalTodaySalesCount / dailyTarget) * 100));
-  const monthlyProgressPercent = Math.min(100, Math.round((personalSalesCount / monthlyTarget) * 100));
 
-  // ----------------------------------------------------
-  // B. ADMINISTRATOR-SPECIFIC METRICS COMPUTATION
-  // ----------------------------------------------------
-  const totalProducts = products.length;
-  const totalCategories = CATEGORIES.length;
+  // ── Métriques admin — lues depuis le DashboardSummary calculé côté backend ─
+  // Toutes ces valeurs portent sur l'intégralité de la base MongoDB,
+  // pas seulement les 50 ventes chargées en mémoire.
+  const s = dashboardSummary; // alias court
+
+  const dailySalesCount        = s?.todaySalesCount   ?? 0;
+  const dailyRevenue           = s?.todayRevenue       ?? 0;
+  const weeklySalesCount       = s?.weekSalesCount     ?? 0;
+  const weeklyRevenue          = s?.weekRevenue        ?? 0;
+  const monthlySalesCount      = s?.monthSalesCount    ?? 0;
+  const monthlyRevenue         = s?.monthRevenue       ?? 0;
+  const trendPct               = s?.trendPercent       ?? null;
+  const operationalMarginPct   = s?.operationalMarginPct ?? null;
+  const grossMargin            = s?.grossMargin        ?? 0;
+  const totalStockAlerts       = s?.stockAlertsCount   ?? (
+    products.filter((p) => p.quantity <= p.alertThreshold).length
+  );
+
+  // Stock — calculé localement (produits chargés sont exhaustifs)
+  const totalProducts      = products.length;
   const totalStockQuantity = products.reduce((sum, p) => sum + p.quantity, 0);
 
-  const todaySales = sales.filter(s => s.createdAt.startsWith(todayStr) && s.status === 'COMPLETED');
-  const dailySalesCount = todaySales.length;
-  const dailyRevenue = todaySales.reduce((sum, s) => sum + s.total, 0);
+  // Utilisateurs — calculé localement
+  const activeUsersCount = users.filter((u) => u.status === 'ACTIVE').length;
 
-  // Monthly revenue (June 2026)
-  const juneSales = sales.filter(s => s.createdAt.includes("-06-") && s.status === 'COMPLETED');
-  const monthlyRevenue = juneSales.reduce((sum, s) => sum + s.total, 0);
+  // ── Graphe 7 jours (Lun → Aujourd'hui) depuis le backend ─────────────────
+  const graphPoints = useMemo((): WeeklyRevenue[] => {
+    if (s?.weeklyGraph && s.weeklyGraph.length > 0) {
+      return s.weeklyGraph;
+    }
+    // Fallback local si le summary n'est pas encore chargé
+    const { weekStartStr: ws } = getDateRange();
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(ws);
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().substring(0, 10);
+      const dayRev = completedSales
+        .filter((v) => v.createdAt.startsWith(dateStr))
+        .reduce((sum, v) => sum + v.total, 0);
+      return {
+        date: dateStr,
+        label: d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+        revenue: dayRev,
+      } as WeeklyRevenue;
+    }).filter((d) => d.date <= todayStr);
+  }, [s?.weeklyGraph, completedSales, todayStr]);
 
-  const totalClients = clients.length;
-  const totalSuppliers = suppliers.length;
-  const activeUsersCount = users.filter(u => u.status === 'ACTIVE').length;
-
-  // Stock alerts
-  const outOfStockProducts = products.filter(p => p.quantity === 0);
-  const criticalStockProducts = products.filter(p => p.quantity > 0 && p.quantity <= p.alertThreshold);
-  const totalStockAlerts = outOfStockProducts.length + criticalStockProducts.length;
-
-  // Trend graph calculation
-  const days = ["01", "02", "03", "04", "05", "06", "07", "08", "09"];
-  const salesByDay = days.map(d => {
-    const daySales = sales.filter(s => s.createdAt.includes(`-06-${d}`) && s.status === 'COMPLETED');
-    const totalRev = daySales.reduce((sum, s) => sum + s.total, 0);
-    return { day: d, value: totalRev };
-  });
-
-  const maxVal = Math.max(...salesByDay.map(d => d.value), 500);
-  const graphWidth = 500;
+  const graphWidth  = 500;
   const graphHeight = 120;
-  const points = salesByDay.map((d, index) => {
-    const x = (index / (salesByDay.length - 1)) * graphWidth;
-    const y = graphHeight - (d.value / maxVal) * (graphHeight - 20) - 10;
-    return { x, y, ...d };
+  const maxVal      = Math.max(...graphPoints.map((d) => Number(d.revenue)), 1000);
+
+  const points = graphPoints.map((d, index) => {
+    const x = graphPoints.length > 1
+      ? (index / (graphPoints.length - 1)) * graphWidth
+      : graphWidth / 2;
+    const y = graphHeight - (Number(d.revenue) / maxVal) * (graphHeight - 20) - 10;
+    return { x, y, ...d, value: Number(d.revenue) };
   });
 
-  const pointsString = points.map(p => `${p.x},${p.y}`).join(' ');
-  const areaString = `0,${graphHeight} ${pointsString} ${graphWidth},${graphHeight}`;
+  const pointsString = points.map((p) => `${p.x},${p.y}`).join(' ');
+  const areaString   = `0,${graphHeight} ${pointsString} ${graphWidth},${graphHeight}`;
 
-  const juneExpenses = 8100;
-  const profitMargin = monthlyRevenue > 0 ? ((monthlyRevenue - juneExpenses) / monthlyRevenue) * 100 : 0;
+  // ── Données enrichies du backend ──────────────────────────────────────────
+  const recentWeekSales: RecentSale[]           = s?.recentWeekSales    ?? [];
+  const backendSecurityEvents: DashboardSecurityEvent[] = s?.securityEvents ?? [];
 
-  // ----------------------------------------------------
-  // RENDER CORRESPONDING DASHBOARD
-  // ----------------------------------------------------
+  // ─────────────────────────────────────────────────────────────────────────
+  // VUE EMPLOYÉ
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (isEmployee) {
+    const dailyProgressPercent = Math.min(
+      100,
+      Math.round((personalTodaySales.length / dailyTarget) * 100),
+    );
+    const monthlyProgressPercent = Math.min(
+      100,
+      Math.round((personalSales.length / monthlyTarget) * 100),
+    );
+
     return (
       <div id="employee-dashboard-root" className="space-y-6 font-sans antialiased text-slate-800">
-        
-        {/* Welcome Block */}
+        {/* Banner */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-full opacity-10 pointer-events-none">
             <Sparkles className="text-slate-900 w-full h-full" />
           </div>
           <div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              Espace Collaborateur <span className="text-xs font-bold font-mono bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-full px-2 py-0.5">Vente & POS</span>
+              Espace Collaborateur{' '}
+              <span className="text-xs font-bold font-mono bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-full px-2 py-0.5">
+                Vente & POS
+              </span>
             </h1>
-            <p className="text-xs text-slate-500 mt-1 leading-normal">
-              Bonjour, <span className="font-bold text-slate-900">{currentUser?.firstName}</span>. Suivez vos objectifs, consultez l'historique de vos facturations personnels, et démarrez de nouvelles ventes rapides en caisse.
+            <p className="text-xs text-slate-500 mt-1">
+              Bonjour,{' '}
+              <span className="font-bold text-slate-900">
+                {currentUser?.firstName}
+              </span>
+              . Suivez vos objectifs et gérez vos ventes.
             </p>
           </div>
           <div className="mt-4 md:mt-0 flex gap-2">
             <button
               onClick={() => onNavigate('POS')}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-5050 transition shadow-sm cursor-pointer"
+              className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition shadow-sm cursor-pointer"
             >
               Lancer une Vente (Caisse)
             </button>
@@ -193,277 +279,203 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* METRICS ROW */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          
-          {/* Card 1: Sales Count */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between group">
+        {/* Métriques employé */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Mes Ventes Réalisées</span>
-              <div className="text-3xl font-black text-slate-900 mt-1.5">{personalSalesCount} <span className="text-xs text-slate-450 font-normal">transactions</span></div>
-              <p className="text-[10px] text-slate-400 mt-1">Facturation totale active accumulée</p>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Mes Ventes Totales</span>
+              <div className="text-3xl font-black text-slate-900 mt-1.5">
+                {personalSales.length}{' '}
+                <span className="text-xs font-normal text-slate-400">transactions</span>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">Accumulées depuis votre arrivée</p>
             </div>
             <div className="h-11 w-11 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center">
               <ShoppingBag className="h-5 w-5" />
             </div>
           </div>
 
-          {/* Card 2: Sales Today */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between group">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Mes Ventes Récentes</span>
-              <div className="text-3xl font-black text-slate-900 mt-1.5">{personalTodaySalesCount} <span className="text-xs text-slate-450 font-normal">ventes</span></div>
-              <p className="text-[10px] text-emerald-600 font-bold mt-1">Dernière activité enregistrée</p>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Ventes Aujourd'hui</span>
+              <div className="text-3xl font-black text-slate-900 mt-1.5">
+                {personalTodaySales.length}{' '}
+                <span className="text-xs font-normal text-slate-400">ventes</span>
+              </div>
+              <p className="text-[10px] text-emerald-600 font-bold mt-1">
+                {formatFcfa(personalTodaySales.reduce((s, v) => s + v.total, 0))}
+              </p>
             </div>
             <div className="h-11 w-11 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center">
               <Flame className="h-5 w-5" />
             </div>
           </div>
 
-          {/* Card 3: Invoices Generated */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between group">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Factures Émises</span>
-              <div className="text-3xl font-black text-slate-900 mt-1.5">{personalInvoicesCount} <span className="text-xs text-slate-450 font-normal">fichiers</span></div>
-              <p className="text-[10px] text-slate-400 mt-1">Générées et imprimables à la caisse</p>
+              <div className="text-3xl font-black text-slate-900 mt-1.5">
+                {personalInvoicesCount}{' '}
+                <span className="text-xs font-normal text-slate-400">fichiers</span>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">Imprimables depuis la caisse</p>
             </div>
             <div className="h-11 w-11 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 flex items-center justify-center">
               <FileText className="h-5 w-5" />
             </div>
           </div>
-
         </div>
 
-        {/* OBJECTIVES AND GAMIFICATION COMPONENT */}
+        {/* Objectifs */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
             <div className="flex items-center gap-2">
               <Target className="h-5 w-5 text-indigo-600" />
               <div>
                 <h3 className="font-extrabold text-slate-950 text-sm">Mes Objectifs Personnels</h3>
-                <p className="text-[10px] text-slate-400">Objectifs opérationnels sur mes ventes de la période</p>
+                <p className="text-[10px] text-slate-400">Suivi opérationnel de la période en cours</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-medium">Activer le module :</span>
-              <button
-                onClick={() => setObjectivesEnabled(!objectivesEnabled)}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  objectivesEnabled ? 'bg-indigo-600' : 'bg-slate-200'
+            <button
+              onClick={() => setObjectivesEnabled((v) => !v)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                objectivesEnabled ? 'bg-indigo-600' : 'bg-slate-200'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ${
+                  objectivesEnabled ? 'translate-x-5' : 'translate-x-0'
                 }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                    objectivesEnabled ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
+              />
+            </button>
           </div>
 
           {objectivesEnabled ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Daily Objective Progress */}
-              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Objectif Journalier</span>
-                    <span className="text-sm font-bold text-slate-800">Quotas de transactions</span>
-                  </div>
-                  <span className="text-xs font-mono font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">
-                    {personalTodaySalesCount} / {dailyTarget} Ventes
-                  </span>
-                </div>
-                
-                {/* Visual Progress Bar */}
-                <div className="mt-4">
-                  <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
-                    <div
-                      className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-                      style={{ width: `${dailyProgressPercent}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-[10px] text-slate-450 text-slate-500 font-mono">Taux de réalisation : {dailyProgressPercent}%</span>
-                    <span className="text-[10px] text-slate-400 font-medium">Goal : {dailyTarget} ventes</span>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-indigo-600 mt-3 flex items-center gap-1 font-medium bg-indigo-50/30 p-2 rounded-lg border border-indigo-100/30">
-                  <Flame className="h-3.5 w-3.5" />
-                  {dailyProgressPercent >= 100 
-                    ? "Félicitations ! Objectif quotidien pulvérisé !" 
-                    : `Encore ${dailyTarget - personalTodaySalesCount} ventes pour valider votre prime du jour.`}
-                </p>
-              </div>
-
-              {/* Monthly Objective Progress */}
-              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Objectif Mensuel</span>
-                    <span className="text-sm font-bold text-slate-800">Volume global de transactions</span>
-                  </div>
-                  <span className="text-xs font-mono font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded">
-                    {personalSalesCount} / {monthlyTarget} Ventes
-                  </span>
-                </div>
-                
-                {/* Visual Progress Bar */}
-                <div className="mt-4">
-                  <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
-                    <div
-                      className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                      style={{ width: `${monthlyProgressPercent}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-[10px] text-slate-450 text-slate-500 font-mono">Taux de réalisation : {monthlyProgressPercent}%</span>
-                    <span className="text-[10px] text-slate-400 font-medium">Goal : {monthlyTarget} ventes</span>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-emerald-700 mt-3 flex items-center gap-1 font-medium bg-emerald-50/30 p-2 rounded-lg border border-emerald-100/30">
-                  <Award className="h-3.5 w-3.5" />
-                  {monthlyProgressPercent >= 100 
-                    ? "Incroyable ! Bonus mensuel à 100% garanti !" 
-                    : `Tenez bon ! ${monthlyTarget - personalSalesCount} ventes restantes pour boucler le mois en beauté.`}
-                </p>
-              </div>
-
+              <ObjectiveCard
+                label="Objectif Journalier"
+                title="Quotas de transactions"
+                current={personalTodaySales.length}
+                target={dailyTarget}
+                percent={dailyProgressPercent}
+                color="indigo"
+                icon={<Flame className="h-3.5 w-3.5" />}
+              />
+              <ObjectiveCard
+                label="Objectif Mensuel"
+                title="Volume global de transactions"
+                current={personalSales.length}
+                target={monthlyTarget}
+                percent={monthlyProgressPercent}
+                color="emerald"
+                icon={<Award className="h-3.5 w-3.5" />}
+              />
             </div>
           ) : (
-            <div className="py-8 text-center bg-slate-50/20 border border-slate-100 border-dashed rounded-xl flex flex-col items-center justify-center">
-              <Award className="h-8 w-8 text-slate-350 text-slate-400 mb-2" />
-              <p className="text-xs font-bold text-slate-700">Le suivi de vos objectifs de vente est désactivé</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Activez le bouton de bascule ci-dessus pour afficher vos taux de commission.</p>
+            <div className="py-8 text-center bg-slate-50/20 border border-dashed border-slate-100 rounded-xl flex flex-col items-center justify-center">
+              <Award className="h-8 w-8 text-slate-400 mb-2" />
+              <p className="text-xs font-bold text-slate-700">Suivi des objectifs désactivé</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">Activez le toggle ci-dessus pour afficher vos progrès.</p>
             </div>
           )}
         </div>
 
-        {/* BOTTOM SECTION: RECENT SALES & RECENT ACTIVITIES */}
+        {/* Ventes récentes + Activité */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          {/* Recent Sales List */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center border-b border-slate-50 pb-2.5 mb-3">
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                  <ShoppingBagIcon className="h-4 w-4 text-emerald-600" /> Mes ventes récentes
-                </h3>
-                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 font-bold rounded">
-                  POS actif
-                </span>
-              </div>
-
-              <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto hierarchy-scroll pr-1">
-                {personalSales.length === 0 ? (
-                  <div className="py-14 text-center text-xs text-slate-400">
-                    Vous n'avez pas encore enregistré de ventes sous votre nom de session.
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="flex justify-between items-center border-b border-slate-50 pb-2.5 mb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <ShoppingBagIcon className="h-4 w-4 text-emerald-600" /> Mes ventes récentes
+              </h3>
+              <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 font-bold rounded">POS actif</span>
+            </div>
+            <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto pr-1">
+              {personalSales.length === 0 ? (
+                <p className="py-14 text-center text-xs text-slate-400">Aucune vente enregistrée sous votre session.</p>
+              ) : (
+                [...personalSales].reverse().slice(0, 5).map((sale) => (
+                  <div
+                    key={sale.id}
+                    onClick={() => onSelectSaleForInvoice(sale)}
+                    className="flex items-center justify-between py-3 hover:bg-slate-50/70 cursor-pointer transition rounded px-1.5"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-slate-800 truncate">{sale.clientName}</p>
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                        {sale.id} • {new Date(sale.createdAt).toLocaleDateString('fr-FR')}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-black font-mono text-slate-950">{formatFcfa(sale.total)}</p>
+                      <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold bg-indigo-50 border border-indigo-100 rounded text-indigo-700 uppercase">
+                        IMPRIMER
+                      </span>
+                    </div>
                   </div>
-                ) : (
-                  personalSales
-                    .slice()
-                    .reverse()
-                    .slice(0, 5)
-                    .map((sale) => (
-                      <div
-                        key={sale.id}
-                        onClick={() => onSelectSaleForInvoice(sale)}
-                        className="flex items-center justify-between py-3 hover:bg-slate-50/70 cursor-pointer transition rounded px-1.5"
-                        title="Afficher la facture correspondante"
-                      >
-                        <div>
-                          <p className="text-xs font-bold text-slate-800 truncate">{sale.clientName}</p>
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                            {sale.id} • {new Date(sale.createdAt).toLocaleDateString('fr-FR')} à {new Date(sale.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-black font-mono text-slate-950">
-                            {sale.total.toLocaleString()} €
-                          </p>
-                          <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold bg-indigo-50 border border-indigo-100 rounded text-indigo-700 leading-none mt-0.5 uppercase">
-                            IMPRIMER
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                )}
-              </div>
+                ))
+              )}
             </div>
           </div>
 
-          {/* Personal Recent Activity Log */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center border-b border-slate-50 pb-2.5 mb-3">
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-indigo-600" /> Mon journal d'activité
-                </h3>
-                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 font-bold rounded">
-                  Perso (9 Derniers jours)
-                </span>
-              </div>
-
-              <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto hierarchy-scroll pr-1">
-                {personalActivities.length === 0 ? (
-                  <div className="py-14 text-center text-xs text-slate-400">
-                    Aucune action journalisée récemment.
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="flex justify-between items-center border-b border-slate-50 pb-2.5 mb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-indigo-600" /> Mon journal d'activité
+              </h3>
+              <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 font-bold rounded">30 derniers jours</span>
+            </div>
+            <div className="divide-y divide-slate-100 max-h-[300px] overflow-y-auto pr-1">
+              {personalActivities.length === 0 ? (
+                <p className="py-14 text-center text-xs text-slate-400">Aucune activité journalisée.</p>
+              ) : (
+                [...personalActivities].reverse().slice(0, 5).map((a, idx) => (
+                  <div key={a.id ?? idx} className="py-3">
+                    <div className="flex justify-between items-start text-xs font-semibold">
+                      <span className="inline-flex items-center gap-1 text-slate-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                        {a.action}
+                      </span>
+                      <span className="text-[9px] text-slate-400 font-mono">
+                        {new Date(a.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium mt-1">{a.details}</p>
                   </div>
-                ) : (
-                  personalActivities
-                    .slice()
-                    .reverse()
-                    .slice(0, 5)
-                    .map((activity, idx) => (
-                      <div key={activity.id || idx} className="py-3">
-                        <div className="flex justify-between items-start text-xs font-semibold">
-                          <span className="inline-flex items-center gap-1 text-slate-700">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
-                            {activity.action}
-                          </span>
-                          <span className="text-[9px] text-slate-400 font-mono">
-                            {new Date(activity.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 font-medium mt-1 leading-normal">
-                          {activity.details}
-                        </p>
-                      </div>
-                    ))
-                )}
-              </div>
+                ))
+              )}
             </div>
           </div>
-
         </div>
-
       </div>
     );
   }
 
-  // ----------------------------------------------------
-  // ADMIN DASHBOARD VIEW
-  // ----------------------------------------------------
+  // ─────────────────────────────────────────────────────────────────────────
+  // VUE ADMIN
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const currentMonthLabel = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
   return (
     <div id="dashboard-root" className="space-y-6 font-sans antialiased text-slate-800">
-      
-      {/* Upper banner welcoming user */}
+
+      {/* Banner */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-full opacity-10 pointer-events-none">
           <Sparkles className="text-slate-900 w-full h-full" />
         </div>
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            Console de Gestion Intégrée <span className="text-xs font-bold font-mono bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-full px-2 py-0.5">V3.4</span>
+            Tableau de bord de visualisation  des produits{' '}
+            <span className="text-xs font-bold font-mono bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-full px-2 py-0.5">
+              V3.4
+            </span>
           </h1>
-          <p className="text-xs text-slate-500 mt-1 leading-normal">
-            Bienvenue dans votre interface SaaS. Les données présentées ci-dessous reflètent la situation financière, les niveaux de stock et l'activité de vente de votre PME en temps réel.
+          <p className="text-xs text-slate-500 mt-1">
+            Situation financière, stocks et activité de vente de votre PME.
           </p>
         </div>
-        <div className="mt-4 md:mt-0 flex gap-2">
+        {/* <div className="mt-4 md:mt-0 flex gap-2">
           <button
             onClick={() => onNavigate('POS')}
             className="px-4 py-2 bg-slate-950 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-sm cursor-pointer"
@@ -476,409 +488,419 @@ export default function Dashboard({
           >
             Audit Sécurité
           </button>
-        </div>
+        </div> */}
       </div>
 
-      {/* CORE STATISTICAL METRICS CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        
-        {/* Metric 1: Products */}
-        <div
-          onMouseEnter={() => setHoveredMetric('prod')}
-          onMouseLeave={() => setHoveredMetric(null)}
-          className="bg-white p-5 rounded-2xl border border-slate-200 hover:border-slate-400 transition-all shadow-xs flex items-center justify-between group"
-        >
-          <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Produits enregistrés</span>
-            <div className="text-2xl font-black text-slate-900 mt-1.5">{totalProducts}</div>
-            <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1 font-mono">
-              <span className="font-bold text-slate-800">{totalCategories}</span> catégories de catalogue
-            </div>
-          </div>
-          <div className="h-10 w-10 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-white transition-all">
-            <Package className="h-5 w-5" />
-          </div>
-        </div>
+      {/* ── MÉTRIQUES PRINCIPALES ──────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
 
-        {/* Metric 2: Stock Volume */}
-        <div
-          onMouseEnter={() => setHoveredMetric('stock')}
-          onMouseLeave={() => setHoveredMetric(null)}
+        {/* Produits */}
+        <MetricCard
+          label="Produits enregistrés"
+          value={String(totalProducts)}
+          sub={`${CATEGORIES.length} catégories de catalogue`}
+          icon={<Package className="h-5 w-5" />}
+          onClick={() => onNavigate('PRODUCTS')}
+        />
+
+        {/* Stock global */}
+        <MetricCard
+          label="Volume Stock Global"
+          value={`${totalStockQuantity.toLocaleString('fr-FR')} piece`}
+          sub={
+            totalStockAlerts > 0
+              ? `⚠ ${totalStockAlerts} alertes de stock`
+              : '✓ Aucune alerte de stock'
+          }
+          subColor={totalStockAlerts > 0 ? 'text-rose-600' : 'text-emerald-600'}
+          icon={<Archive className="h-5 w-5" />}
+          alert={totalStockAlerts > 0}
           onClick={() => onNavigate('STOCK')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 hover:border-slate-400 transition-all shadow-xs flex items-center justify-between group cursor-pointer"
-        >
-          <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Volume Stock Global</span>
-            <div className="text-2xl font-black text-slate-900 mt-1.5">{totalStockQuantity} <span className="text-xs font-light text-slate-500">unités</span></div>
-            <div className="text-[10px] text-rose-600 mt-1 flex items-center gap-1 font-mono font-bold">
-              {totalStockAlerts > 0 ? (
-                <span className="flex items-center gap-1">
-                  <AlertOctagon className="h-3 w-3" /> {totalStockAlerts} alertes de stock
-                </span>
-              ) : (
-                <span className="text-emerald-600">Aucune alerte de stock</span>
-              )}
-            </div>
-          </div>
-          <div className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-all ${
-            totalStockAlerts > 0 ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-slate-50 border-slate-100 text-slate-600 group-hover:bg-slate-950 group-hover:text-white'
-          }`}>
-            <Archive className="h-5 w-5" />
-          </div>
-        </div>
+        />
 
-        {/* Metric 3: POS Sales of the Day */}
-        <div
-          onMouseEnter={() => setHoveredMetric('sales')}
-          onMouseLeave={() => setHoveredMetric(null)}
-          onClick={() => onNavigate('POS')}
-          className="bg-white p-5 rounded-2xl border border-slate-200 hover:border-slate-400 transition-all shadow-xs flex items-center justify-between group cursor-pointer"
-        >
+        {/* Opérateurs */}
+        <MetricCard
+          label="compte actif"
+          value={`${activeUsersCount} actifs`}
+          sub={`${users.length} comptes total`}
+          icon={<UserCheck2 className="h-5 w-5" />}
+          onClick={() => onNavigate('USERS')}
+        />
+
+        {/* Marge opérationnelle */}
+        {/* <div className="bg-white p-5 rounded-2xl border border-slate-200 hover:border-slate-400 transition-all shadow-xs flex items-center justify-between group">
           <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Ventes du jour</span>
-            <div className="text-2xl font-black text-slate-900 mt-1.5">{dailySalesCount} <span className="text-xs font-light text-slate-500">transactions</span></div>
-            <div className="text-[10px] text-indigo-600 mt-1 flex items-center gap-1 font-mono">
-              <TrendingUp className="h-3 w-3" /> Revenus du jour : {Math.round(dailyRevenue).toLocaleString()} FCFA
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Marge Opérationnelle</span>
+            <div className={`text-2xl font-black mt-1.5 ${
+              operationalMarginPct == null ? 'text-slate-400'
+              : operationalMarginPct > 20 ? 'text-emerald-700'
+              : operationalMarginPct > 0 ? 'text-amber-600'
+              : 'text-slate-400'
+            }`}>
+              {operationalMarginPct != null && monthlyRevenue > 0
+                ? `${operationalMarginPct.toFixed(1)} %`
+                : 'N/A'}
+            </div>
+            <div className="text-[10px] text-slate-500 mt-1 font-mono">
+              {operationalMarginPct != null && monthlyRevenue > 0
+                ? `Marge brute : ${formatFcfa(grossMargin)}`
+                : 'Aucune vente ce mois'}
             </div>
           </div>
           <div className="h-10 w-10 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-white transition-all">
-            <ShoppingBag className="h-5 w-5" />
+            <Percent className="h-5 w-5" />
           </div>
-        </div>
+        </div> */}
 
-        {/* Metric 4: Revenue Monthly */}
-        <div
-          onMouseEnter={() => setHoveredMetric('revenue')}
-          onMouseLeave={() => setHoveredMetric(null)}
-          className="bg-white p-5 rounded-2xl border border-slate-200 hover:border-slate-400 transition-all shadow-xs flex items-center justify-between group"
-        >
-          <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Chiffre d'Affaires Juin</span>
-            <div className="text-2xl font-black text-slate-900 mt-1.5">{monthlyRevenue.toLocaleString('fr-FR')} FCFA</div>
-            <div className="text-[10px] text-emerald-600 mt-1 font-mono font-bold flex items-center gap-1">
-              Bénéfice net estimé : {Math.round(monthlyRevenue - juneExpenses).toLocaleString()} FCFA
+      </div>
+
+      {/* ── MÉTRIQUES VENTES JOUR / SEMAINE / MOIS ────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+        {/* Jour */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-400 transition-all group cursor-pointer" onClick={() => onNavigate('POS')}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center">
+                <CalendarDays className="h-4 w-4" />
+              </div>
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Aujourd'hui</span>
             </div>
-          </div>
-          <div className="h-10 w-10 rounded-xl bg-slate-50 border border-slate-100 text-slate-600 flex items-center justify-center group-hover:bg-slate-950 group-hover:text-white transition-all font-mono text-base font-bold">
-            <CircleDollarSign className="h-5 w-5" />
-          </div>
-        </div>
-
-        {/* Metric 5: Clients Directory */}
-        <div className="bg-white p-4 rounded-xl border border-slate-150 shadow-xs flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600 shadow-xs shrink-0">
-            <Users2 className="h-4.5 w-4.5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Fidélité Clients</span>
-            <span className="text-sm font-black text-slate-900">{totalClients} inscrits</span>
-          </div>
-        </div>
-
-        {/* Metric 6: Suppliers */}
-        <div className="bg-white p-4 rounded-xl border border-slate-150 shadow-xs flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600 shadow-xs shrink-0">
-            <Building className="h-4.5 w-4.5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Relations Fournisseurs</span>
-            <span className="text-sm font-black text-slate-900">{totalSuppliers} partenaires</span>
-          </div>
-        </div>
-
-        {/* Metric 7: Logged Operators */}
-        <div className="bg-white p-4 rounded-xl border border-slate-150 shadow-xs flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600 shadow-xs shrink-0">
-            <UserCheck2 className="h-4.5 w-4.5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Session Opérateurs</span>
-            <span className="text-sm font-black text-slate-900">{activeUsersCount} actifs</span>
-          </div>
-        </div>
-
-        {/* Metric 8: Financial Ratio */}
-        <div className="bg-white p-4 rounded-xl border border-slate-150 shadow-xs flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600 shadow-xs shrink-0 font-bold text-xs">
-            %
-          </div>
-          <div className="min-w-0 flex-1">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Marge Opérationnelle</span>
-            <span className={`text-sm font-black ${profitMargin > 20 ? 'text-emerald-700' : 'text-slate-900'}`}>
-              {profitMargin > 0 ? profitMargin.toFixed(1) : "N/A"} %
+            <span className="text-[9px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+              {new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
             </span>
           </div>
-        </div>
-
-      </div>
-
-      {/* CHARTS WORKSPACE GRID ROW */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Trend Area Chart (Revenues over 9 days) */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs lg:col-span-2 flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center pb-2">
+          <div className="space-y-2">
+            <div className="flex justify-between items-end">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Activité de Vente Mensuelle</h3>
-                <p className="text-[10px] text-slate-400 leading-normal">Chiffre d'affaires cumulé sur les 9 premiers jours de Juin 2026</p>
+                <p className="text-[10px] text-slate-400 font-mono">Ventes</p>
+                <p className="text-2xl font-black text-slate-900">{dailySalesCount}</p>
               </div>
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 font-mono">
-                <TrendingUp className="h-3 w-3" /> +14.2% ce mois
-              </span>
-            </div>
-
-            {/* Inline Highly Stylised Area SVG Chart */}
-            <div className="mt-4 relative">
-              <svg viewBox={`0 0 ${graphWidth} ${graphHeight}`} className="w-full h-40 overflow-visible">
-                <defs>
-                  <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.25" />
-                    <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-
-                {/* Sub-grid guides */}
-                <line x1="0" y1="10" x2={graphWidth} y2="10" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                <line x1="0" y1="60" x2={graphWidth} y2="60" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                <line x1="0" y1="110" x2={graphWidth} y2="110" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-
-                {/* Shaded Area */}
-                <polygon points={areaString} fill="url(#chart-area-grad)" />
-
-                {/* Stroke Line */}
-                <polyline
-                  fill="none"
-                  stroke="#4f46e5"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  points={pointsString}
-                />
-
-                {/* Interaction circle markers */}
-                {points.map((p, idx) => (
-                  <g key={idx} className="group/dot cursor-pointer">
-                    <circle
-                      cx={p.x}
-                      cy={p.y}
-                      r="4.5"
-                      fill="#ffffff"
-                      stroke="#4f46e5"
-                      strokeWidth="2.5"
-                    />
-                    <circle
-                      cx={p.x}
-                      cy={p.y}
-                      r="10"
-                      fill="#4f46e5"
-                      fillOpacity="0"
-                      className="hover:fill-opacity-10 transition duration-150"
-                    />
-                    <title>{`0${idx + 1} Juin : ${Math.round(p.value)} €`}</title>
-                  </g>
-                ))}
-              </svg>
-
-              {/* Chart Label axis */}
-              <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono pt-3 border-t border-slate-50">
-                {salesByDay.map((d, i) => (
-                  <span key={i}>0{d.day} Juin</span>
-                ))}
+              <div className="text-right">
+                <p className="text-[10px] text-slate-400 font-mono">Revenu</p>
+                <p className="text-sm font-black text-indigo-700">{formatFcfa(dailyRevenue)}</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Distribution of categories bar chart */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Répartition par Catégorie</h3>
-            <p className="text-[10px] text-slate-400 leading-normal">Volume d'unités de produits en stock selon la catégorie d'affectation</p>
-            
-            <div className="mt-4 space-y-3">
-              {CATEGORIES.map((cat, idx) => {
-                const totalInCat = products.filter(p => p.category === cat).reduce((sum, p) => sum + p.quantity, 0);
-                const maxStockPossible = totalStockQuantity > 0 ? totalStockQuantity : 1;
-                const percentage = Math.round((totalInCat / maxStockPossible) * 100);
-                
-                const barColors = [
-                  'bg-indigo-600',
-                  'bg-emerald-600',
-                  'bg-amber-500',
-                  'bg-rose-500',
-                  'bg-sky-600',
-                  'bg-slate-700'
-                ];
+        {/* Semaine */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-400 transition-all group cursor-pointer" onClick={() => onNavigate('POS')}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center">
+                <BarChart3 className="h-4 w-4" />
+              </div>
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Cette semaine</span>
+            </div>
+            <span className="text-[9px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+              Lun → {new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+            </span>
+          </div>
+          <div className="flex justify-between items-end">
+            <div>
+              <p className="text-[10px] text-slate-400 font-mono">Ventes</p>
+              <p className="text-2xl font-black text-slate-900">{weeklySalesCount}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-slate-400 font-mono">Revenu</p>
+              <p className="text-sm font-black text-emerald-700">{formatFcfa(weeklyRevenue)}</p>
+            </div>
+          </div>
+        </div>
 
-                return (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex justify-between items-center text-[11px]">
-                      <span className="font-semibold text-slate-700 truncate">{cat}</span>
-                      <span className="font-mono text-slate-500">{totalInCat} pces ({percentage}%)</span>
+        {/* Mois */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-400 transition-all group cursor-pointer" onClick={() => onNavigate('POS')}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center">
+                <CircleDollarSign className="h-4 w-4" />
+              </div>
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Ce mois</span>
+            </div>
+            <span className="text-[9px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 capitalize">
+              {currentMonthLabel}
+            </span>
+          </div>
+          <div className="flex justify-between items-end">
+            <div>
+              <p className="text-[10px] text-slate-400 font-mono">Ventes</p>
+              <p className="text-2xl font-black text-slate-900">{monthlySalesCount}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-slate-400 font-mono">CA</p>
+              <p className="text-sm font-black text-amber-700">{formatFcfa(monthlyRevenue)}</p>
+              {trendPct !== null && (
+                <p className={`text-[9px] font-bold mt-0.5 ${trendPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {trendPct >= 0 ? '▲' : '▼'} {Math.abs(trendPct).toFixed(1)}% vs mois préc.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* ── GRAPHE SEMAINE ──────────────────────────────────────────────────── */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex justify-between items-start pb-2 mb-2">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Activité de Vente — Cette semaine</h3>
+            <p className="text-[10px] text-slate-400">
+              CA par jour · Lundi → {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'short' })}
+            </p>
+          </div>
+          {trendPct !== null ? (
+            <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded border font-mono ${
+              trendPct >= 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100'
+            }`}>
+              {trendPct >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+              {trendPct >= 0 ? '+' : ''}{trendPct.toFixed(1)}% vs mois préc.
+            </span>
+          ) : (
+            <span className="text-[11px] text-slate-400 font-mono bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+              {formatFcfa(weeklyRevenue)} cette semaine
+            </span>
+          )}
+        </div>
+        <div className="mt-2 relative">
+          <svg viewBox={`0 0 ${graphWidth} ${graphHeight}`} className="w-full h-40 overflow-visible">
+            <defs>
+              <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
+              </linearGradient>
+            </defs>
+            {[10, 45, 80, 110].map((y) => (
+              <line key={y} x1="0" y1={y} x2={graphWidth} y2={y} stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+            ))}
+            <polygon points={areaString} fill="url(#chart-area-grad)" />
+            <polyline fill="none" stroke="#4f46e5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" points={pointsString} />
+            {points.map((p, idx) => (
+              <g key={idx} className="cursor-pointer">
+                <circle cx={p.x} cy={p.y} r={p.value > 0 ? 5 : 3} fill={p.value > 0 ? '#4f46e5' : '#e2e8f0'} stroke="#fff" strokeWidth="2" />
+                <title>{p.label} — {formatFcfa(p.value)}</title>
+              </g>
+            ))}
+          </svg>
+          <div className="grid pt-2 border-t border-slate-50" style={{ gridTemplateColumns: `repeat(${graphPoints.length}, 1fr)` }}>
+            {graphPoints.map((d, i) => (
+              <span key={i} className="text-[9px] text-slate-400 font-mono text-center truncate">{d.label}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── ALERTES + DERNIÈRES VENTES + SÉCURITÉ ──────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Stocks critiques */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex justify-between items-center border-b border-slate-50 pb-2.5 mb-3">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <AlertOctagon className="h-4 w-4 text-rose-500" /> Stocks critiques ({totalStockAlerts})
+            </h3>
+            <button onClick={() => onNavigate('STOCK')} className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 whitespace-nowrap">
+              Gérer <ArrowRight className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="divide-y divide-slate-100 max-h-[280px] overflow-y-auto pr-1">
+            {totalStockAlerts === 0 ? (
+              <p className="py-10 text-center text-xs text-slate-400">Aucun produit sous le seuil critique.</p>
+            ) : (
+              products.filter((p) => p.quantity <= p.alertThreshold).sort((a, b) => a.quantity - b.quantity).map((p) => (
+                <div key={p.id} className="flex items-center justify-between py-2.5">
+                  <div className="min-w-0 pr-2">
+                    <p className="text-xs font-bold text-slate-800 truncate">{p.name}</p>
+                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">Seuil : {p.alertThreshold}</p>
+                  </div>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold font-mono shrink-0 ${p.quantity === 0 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-amber-50 text-amber-700 border border-amber-100'}`}>
+                    {p.quantity === 0 ? 'RUPTURE' : `${p.quantity} restants`}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Dernières ventes de la semaine */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex justify-between items-center border-b border-slate-50 pb-2.5 mb-3">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <ShoppingBagIcon className="h-4 w-4 text-emerald-600" /> Ventes de la semaine
+            </h3>
+            <button onClick={() => onNavigate('POS')} className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 whitespace-nowrap">
+              Caisse <ArrowRight className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="divide-y divide-slate-100 max-h-[280px] overflow-y-auto pr-1">
+            {recentWeekSales.length === 0 ? (
+              <p className="py-10 text-center text-xs text-slate-400">Aucune vente cette semaine.</p>
+            ) : (
+              recentWeekSales.map((sale) => (
+                <div key={sale.id} className="py-2.5">
+                  <div className="flex justify-between items-start">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <p className="text-xs font-bold text-slate-900 truncate">{sale.employeeName}</p>
+                      <p className="text-[10px] text-indigo-600 font-medium truncate">{sale.firstProductName}</p>
                     </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 flex overflow-hidden">
-                      <div
-                        className={`${barColors[idx % barColors.length]} h-full rounded-full`}
-                        style={{ width: `${percentage}%` }}
-                      ></div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-black font-mono text-slate-950">{formatFcfa(Number(sale.totalAmount))}</p>
+                      <span className="text-[9px] font-bold bg-slate-100 text-slate-500 px-1 rounded">{sale.paymentMethod}</span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* CORE ALERTS, CRITICAL NOTIFICATIONS AND TICKER ROW */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Low stocks list (Left column) */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center border-b border-slate-50 pb-2.5">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <AlertOctagon className="h-4 w-4 text-rose-500" /> Catalogues critiques ({totalStockAlerts})
-              </h3>
-              <button
-                onClick={() => onNavigate('STOCK')}
-                className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 whitespace-nowrap"
-              >
-                Gérer le stock <ArrowRight className="h-3 w-3" />
-              </button>
-            </div>
-
-            <div className="mt-3 divide-y divide-slate-100 max-h-[280px] overflow-y-auto hierarchy-scroll pr-1">
-              {totalStockAlerts === 0 ? (
-                <div className="py-10 text-center text-xs text-slate-400">
-                  Aucun produit en deçà du seuil critique de sécurité !
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] text-slate-400 font-mono">{sale.date}</span>
+                    <span className="text-[9px] text-slate-300">·</span>
+                    <span className="text-[9px] text-slate-400 font-mono">{sale.time}</span>
+                    <span className="text-[9px] text-slate-300">·</span>
+                    <span className="text-[9px] text-slate-400 font-mono truncate">{sale.saleNumber}</span>
+                  </div>
                 </div>
-              ) : (
-                products
-                  .filter(p => p.quantity <= p.alertThreshold)
-                  .sort((a,b) => a.quantity - b.quantity)
-                  .map((p) => {
-                    const isOutOfStock = p.quantity === 0;
-                    return (
-                      <div key={p.id} className="flex items-center justify-between py-2.5">
-                        <div className="min-w-0 pr-2">
-                          <p className="text-xs font-bold text-slate-800 truncate">{p.name}</p>
-                          <p className="text-[10px] text-slate-400 font-mono tracking-tight mt-0.5">Ref: {p.reference} • Seuil: {p.alertThreshold}</p>
-                        </div>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold font-mono tracking-wide shrink-0 ${
-                          isOutOfStock ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-amber-50 text-amber-700 border border-amber-100'
-                        }`}>
-                          {isOutOfStock ? 'RUPTURE' : `${p.quantity} RESTANTS`}
-                        </span>
-                      </div>
-                    );
-                  })
-              )}
-            </div>
+              ))
+            )}
           </div>
         </div>
 
-        {/* Latest sales list (Middle column) */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center border-b border-slate-50 pb-2.5">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <ShoppingBagIcon className="h-4 w-4 text-emerald-600" /> Dernières Ventes
-              </h3>
-              <button
-                onClick={() => onNavigate('POS')}
-                className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 whitespace-nowrap"
-              >
-                Aller en Caisse <ArrowRight className="h-3 w-3" />
-              </button>
-            </div>
-
-            <div className="mt-3 divide-y divide-slate-100 max-h-[280px] overflow-y-auto hierarchy-scroll pr-1">
-              {sales.length === 0 ? (
-                <div className="py-10 text-center text-xs text-slate-400">
-                  Aucune vente enregistrée dans le système pour l'instant.
-                </div>
-              ) : (
-                sales
-                  .slice()
-                  .reverse()
-                  .slice(0, 5)
-                  .map((sale) => {
-                    const isCancelled = sale.status === 'CANCELLED';
-                    return (
-                      <div
-                        key={sale.id}
-                        onClick={() => onSelectSaleForInvoice(sale)}
-                        className="flex items-center justify-between py-2.5 hover:bg-slate-50/50 cursor-pointer transition rounded px-1 animate-fadeIn"
-                        title="Cliquer pour afficher la facture correspondante"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs font-bold text-slate-800 truncate">{sale.clientName}</p>
-                            {isCancelled && (
-                              <span className="text-[8px] bg-slate-100 text-slate-500 font-bold px-1 rounded">ANNULÉ</span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                            {sale.id} • {new Date(sale.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className={`text-xs font-black font-mono ${isCancelled ? 'text-slate-400 line-through' : 'text-slate-950'}`}>
-                            {sale.total.toLocaleString()} €
-                          </p>
-                          <p className="text-[9px] text-slate-400 font-sans">{sale.paymentMethod}</p>
-                        </div>
-                      </div>
-                    );
-                  })
-              )}
-            </div>
+        {/* Télémétrie sécurité */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex justify-between items-center border-b border-slate-50 pb-2.5 mb-3">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <ShieldAlert className="h-4 w-4 text-indigo-600" /> Télémétrie Sécurité
+            </h3>
+            <button onClick={() => onNavigate('SECURITY')} className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 whitespace-nowrap">
+              Administration <ArrowRight className="h-3 w-3" />
+            </button>
           </div>
-        </div>
-
-        {/* Security telemetry summary (Right column) */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center border-b border-slate-50 pb-2.5">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <ShieldAlert className="h-4 w-4 text-indigo-600" /> Télémétrie Sécurité
-              </h3>
-              <button
-                onClick={() => onNavigate('SECURITY')}
-                className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 whitespace-nowrap"
-              >
-                Administration <ArrowRight className="h-3 w-3" />
-              </button>
-            </div>
-
-            <div className="mt-3 divide-y divide-slate-100 max-h-[280px] overflow-y-auto hierarchy-scroll pr-1">
-              {securityEvents.slice(0, 4).map((event) => {
-                const isFail = event.status === 'FAILURE' || event.status === 'ALERT';
+          <div className="divide-y divide-slate-100 max-h-[280px] overflow-y-auto pr-1">
+            {backendSecurityEvents.length === 0 ? (
+              <p className="py-10 text-center text-xs text-slate-400">Aucun événement de sécurité cette semaine.</p>
+            ) : (
+              backendSecurityEvents.map((event) => {
+                const isFail = event.status === 'FAILURE';
+                const actionLabels: Record<string, string> = {
+                  LOGIN: 'Connexion', LOGOUT: 'Déconnexion', PASSWORD_CHANGE: 'Mot de passe modifié',
+                  ADMIN_CREATED: 'Admin créé', SALE_CANCEL: 'Vente annulée', USER_CREATE: 'Utilisateur créé',
+                  EMPLOYEE_INVITED: 'Employé invité', PRODUCT_DELETE: 'Produit supprimé',
+                  STOCK_ADJUSTMENT: 'Ajustement stock', '2FA_VERIFY': 'Vérification 2FA',
+                  LOGIN_FAILED: 'Échec connexion',
+                };
                 return (
                   <div key={event.id} className="py-2.5">
-                    <div className="flex justify-between items-start text-xs font-semibold">
-                      <span className={`inline-flex items-center gap-1 ${isFail ? 'text-rose-600' : 'text-emerald-700'}`}>
-                        <Clock className="h-3 w-3 text-slate-300" />
-                        {event.eventType}
+                    <div className="flex justify-between items-start">
+                      <span className={`text-xs font-bold ${isFail ? 'text-rose-600' : 'text-emerald-700'}`}>
+                        {actionLabels[event.action] ?? event.action}
                       </span>
-                      <span className="text-[9px] text-slate-400 font-mono">
-                        {new Date(event.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isFail ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                        {isFail ? 'ÉCHEC' : 'OK'}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-700 font-medium mt-0.5">{event.details}</p>
-                    <p className="text-[9px] text-slate-400 font-mono truncate mt-0.5">IP: {event.ip} • Loc: {event.location}</p>
+                    <p className="text-[10px] text-slate-600 font-mono mt-0.5 truncate">{event.userEmail}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[9px] text-slate-400 font-mono">{event.date}</span>
+                      <span className="text-[9px] text-slate-300">·</span>
+                      <span className="text-[9px] text-slate-400 font-mono">{event.time}</span>
+                      <span className="text-[9px] text-slate-300">·</span>
+                      <span className="text-[9px] text-slate-400 font-mono truncate">IP: {event.ipAddress}</span>
+                    </div>
                   </div>
                 );
-              })}
-            </div>
+              })
+            )}
           </div>
         </div>
 
       </div>
 
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sous-composants réutilisables
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface MetricCardProps {
+  label: string;
+  value: string;
+  sub: string;
+  subColor?: string;
+  icon: React.ReactNode;
+  alert?: boolean;
+  onClick?: () => void;
+}
+
+function MetricCard({ label, value, sub, subColor = 'text-slate-500', icon, alert = false, onClick }: MetricCardProps) {
+  return (
+    <div
+      onClick={onClick}
+      className={`bg-white p-5 rounded-2xl border shadow-xs flex items-center justify-between group transition-all ${
+        onClick ? 'cursor-pointer hover:border-slate-400' : ''
+      } ${alert ? 'border-rose-200' : 'border-slate-200'}`}
+    >
+      <div>
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">{label}</span>
+        <div className="text-2xl font-black text-slate-900 mt-1.5">{value}</div>
+        <div className={`text-[10px] mt-1 font-mono font-bold ${subColor}`}>{sub}</div>
+      </div>
+      <div className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-all ${
+        alert
+          ? 'bg-rose-50 border-rose-100 text-rose-600'
+          : 'bg-slate-50 border-slate-100 text-slate-600 group-hover:bg-slate-950 group-hover:text-white'
+      }`}>
+        {icon}
+      </div>
+    </div>
+  );
+}
+
+interface ObjectiveCardProps {
+  label: string;
+  title: string;
+  current: number;
+  target: number;
+  percent: number;
+  color: 'indigo' | 'emerald';
+  icon: React.ReactNode;
+}
+
+function ObjectiveCard({ label, title, current, target, percent, color, icon }: ObjectiveCardProps) {
+  const bar = color === 'indigo' ? 'bg-indigo-600' : 'bg-emerald-500';
+  const text = color === 'indigo' ? 'text-indigo-700 bg-indigo-50 border-indigo-100' : 'text-emerald-700 bg-emerald-50 border-emerald-100';
+  const msg = color === 'indigo'
+    ? percent >= 100
+      ? 'Félicitations ! Objectif quotidien atteint !'
+      : `Encore ${target - current} vente${target - current > 1 ? 's' : ''} pour la prime du jour.`
+    : percent >= 100
+      ? 'Bonus mensuel à 100% garanti !'
+      : `${target - current} vente${target - current > 1 ? 's' : ''} restantes pour finir le mois en beauté.`;
+
+  return (
+    <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <span className="text-[10px] text-slate-400 uppercase tracking-wider block">{label}</span>
+          <span className="text-sm font-bold text-slate-800">{title}</span>
+        </div>
+        <span className={`text-xs font-mono font-extrabold border px-2 py-0.5 rounded ${text}`}>
+          {current} / {target} Ventes
+        </span>
+      </div>
+      <div className="mt-4">
+        <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+          <div className={`${bar} h-full rounded-full transition-all duration-500`} style={{ width: `${percent}%` }} />
+        </div>
+        <div className="flex justify-between items-center mt-2">
+          <span className="text-[10px] text-slate-500 font-mono">Réalisation : {percent}%</span>
+          <span className="text-[10px] text-slate-400">Goal : {target} ventes</span>
+        </div>
+      </div>
+      <p className={`text-[11px] mt-3 flex items-center gap-1 font-medium p-2 rounded-lg border ${
+        color === 'indigo' ? 'text-indigo-600 bg-indigo-50/30 border-indigo-100/30' : 'text-emerald-700 bg-emerald-50/30 border-emerald-100/30'
+      }`}>
+        {icon}
+        {msg}
+      </p>
     </div>
   );
 }

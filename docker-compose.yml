@@ -1,35 +1,58 @@
 services:
+
+  # ── Backend Spring Boot ─────────────────────────────────────────────────────
   boutiquesync-backend:
     image: boutiquesync-backend:latest
     container_name: boutiquesync-backend
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "8085:8085"           # port_hote:port_container
+      - "${SERVER_PORT:-8085}:8085"
     environment:
-      # Spring
       SPRING_PROFILES_ACTIVE: prod
-
-      # MongoDB — ton collègue mettra sa propre URI
       MONGODB_URI: ${MONGODB_URI}
-
-      # Sécurité
       JWT_SECRET: ${JWT_SECRET}
       TOTP_KEY: ${TOTP_KEY}
-
-      # Mail
-      MAIL_HOST: ${MAIL_HOST}
-      MAIL_PORT: ${MAIL_PORT}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
-      MAIL_FROM_NAME: ${MAIL_FROM_NAME}
-
-      # Invitation & Frontend
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-BoutiqueSync}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_EXTRA_URLS: ${FRONTEND_EXTRA_URLS:-}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       INVITATION_EXPIRY_HOURS: ${INVITATION_EXPIRY_HOURS:-24}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
+      SHOP_NAME: ${SHOP_NAME:-Ma Boutique}
+      SHOP_ADDRESS: ${SHOP_ADDRESS:-}
+      SHOP_PHONE: ${SHOP_PHONE:-}
+      SHOP_EMAIL: ${SHOP_EMAIL:-}
+      SHOP_VAT_NUMBER: ${SHOP_VAT_NUMBER:-}
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-      # Boutique
-      SHOP_NAME: ${SHOP_NAME}
-      SHOP_ADDRESS: ${SHOP_ADDRESS}
-      SHOP_PHONE: ${SHOP_PHONE}
-      SHOP_EMAIL: ${SHOP_EMAIL}
-
+  # ── Frontend React + Nginx ──────────────────────────────────────────────────
+  boutiquesync-frontend:
+    image: boutiquesync-frontend:latest
+    container_name: boutiquesync-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # L'URL de l'API est injectée au moment du build Vite
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8085/api}
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      boutiquesync-backend:
+        condition: service_healthy
     restart: unless-stopped

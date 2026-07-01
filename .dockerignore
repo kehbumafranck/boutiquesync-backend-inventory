@@ -1,4 +1,10 @@
 # ============================================================
+# Frontend — géré par son propre Dockerfile dans ./frontend
+# ============================================================
+frontend/node_modules/
+frontend/dist/
+
+# ============================================================
 # Dossier de compilation Maven
 # → Docker recompile lui-même dans le Dockerfile (mvn package)
 #   Inclure target/ alourdirait inutilement le contexte d'envoi

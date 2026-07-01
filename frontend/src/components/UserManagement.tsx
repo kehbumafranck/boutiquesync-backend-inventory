@@ -7,10 +7,9 @@ import { useState } from 'react';
 import {
   Mail,
   Send,
-  UserPlus,
   Trash2,
   Shield,
-  Key
+  ExternalLink,
 } from 'lucide-react';
 import { User, UserRole } from '../types';
 
@@ -40,24 +39,11 @@ export default function UserManagement({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Sandbox simulation URL state
-  const [generatedLink, setGeneratedLink] = useState('');
-  const [isActivationOpen, setIsActivationOpen] = useState(false);
-  const [activationEmail, setActivationEmail] = useState('');
-
-  // Activation form fields
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [username, setUsername] = useState('');
-  const [pwd, setPwd] = useState('');
-  const [pwdConfirm, setPwdConfirm] = useState('');
-
   // Handle invitation trigger
   const handleInviteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
-    setGeneratedLink('');
 
     if (!invitedEmail) return;
 
@@ -72,58 +58,12 @@ export default function UserManagement({
       'Invitation utilisateur',
       'ADMIN',
       operatorName,
-      `Génération d'une invitation sécurisée pour l'adresse: ${invitedEmail}`,
+      `Invitation envoyée à : ${invitedEmail}`,
       'INFO'
     );
 
-    setSuccess(`Invitation d'activation générée avec succès pour ${invitedEmail}.`);
-    
-    // Simulate link generation
-    const mockActivationToken = "tok_" + Math.random().toString(36).substring(2, 10);
-    const mockUrl = `https://saas-nexus.pme/activate?token=${mockActivationToken}&email=${encodeURIComponent(invitedEmail)}`;
-    setGeneratedLink(mockUrl);
-    setActivationEmail(invitedEmail);
+    setSuccess(`Invitation envoyée à ${invitedEmail}. L'employé recevra un email avec un lien d'activation.`);
     setInvitedEmail('');
-  };
-
-  // Simulated activation process
-  const handleActivationSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!firstName || !lastName || !username || !pwd || !pwdConfirm) {
-      alert("Veuillez remplir tous les champs.");
-      return;
-    }
-
-    if (pwd !== pwdConfirm) {
-      alert("Les mots de passe ne correspondent pas !");
-      return;
-    }
-
-    // Find the pending user and activate them
-    const pendingUser = users.find(u => u.email.toLowerCase() === activationEmail.toLowerCase());
-    if (pendingUser) {
-      onUpdateUser({
-        ...pendingUser,
-        firstName,
-        lastName,
-        username,
-        status: 'ACTIVE',
-        mfaEnabled: false
-      });
-
-      onAddAuditLog(
-        'Compte activé',
-        'AUTH',
-        firstName + ' ' + lastName,
-        `Création de compte finalisée par l'utilisateur pour l'email: ${activationEmail}`,
-        'INFO'
-      );
-
-      alert(`Compte activé avec succès ! Bienvenue à bord, ${firstName}. Vous pouvez maintenant utiliser ces identifiants pour vous connecter.`);
-      setIsActivationOpen(false);
-      setGeneratedLink('');
-      setSuccess('');
-    }
   };
 
   // SUSPEND OR REACTIVATE OPERATORS
@@ -350,24 +290,22 @@ export default function UserManagement({
                 className="w-full py-2.5 bg-slate-900 hover:bg-slate-850 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
               >
                 <Send className="h-3.5 w-3.5" />
-                <span>Générer l'Invitation</span>
+                <span>Envoyer l'Invitation</span>
               </button>
             </form>
 
-            {/* Simulated instant activation link */}
-            {generatedLink && (
-              <div className="mt-4 pt-4 border-t border-slate-100 bg-indigo-50/20 p-3 rounded-xl border border-dashed border-indigo-150">
-                <span className="text-[9px] font-bold text-indigo-600 block uppercase">🚀 SIMULATEUR CLOUD EMAIL :</span>
-                <p className="text-[10px] text-slate-500 mt-1">Pour que l'employé complète son profil (Nom, Prénom, Passe) sans email matériel réel, cliquez ci-dessous pour ouvrir le portail d'enregistrement :</p>
-                
-                <button
-                  onClick={() => setIsActivationOpen(true)}
-                  className="mt-2 text-[10px] font-extrabold text-indigo-805 text-indigo-800 underline hover:text-indigo-950 flex items-center gap-1"
-                >
-                  <UserPlus className="h-3 w-3" /> Ouvrir le portail d'Activation Simulé
-                </button>
-              </div>
-            )}
+            {/* Lien vers la page d'activation pour test local */}
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <a
+                href="/complete-registration"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-[10px] text-slate-400 hover:text-slate-700 transition"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Ouvrir la page d'activation employé
+              </a>
+            </div>
           </div>
 
           {/* Interactive Role Permissions map widget */}
@@ -388,104 +326,6 @@ export default function UserManagement({
         </div>
 
       </div>
-
-      {/* PORTAL SIMULATION DRAWER ACTIVATION WINDOW */}
-      {isActivationOpen && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 border border-slate-105 shadow-2xl relative animate-in zoom-in duration-200">
-            
-            <div className="text-center pb-4 border-b border-slate-50">
-              <span className="h-10 w-10 bg-indigo-50 text-indigo-700 font-bold flex items-center justify-center rounded-2xl mx-auto mb-2">
-                <Key className="h-5 w-5" />
-              </span>
-              <h3 className="text-sm font-black text-slate-900">Portail d'Activation Salarié</h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Enregistrement initial consécutif à l'invitation sur {activationEmail}</p>
-            </div>
-
-            <form onSubmit={handleActivationSubmit} className="mt-4 space-y-3 text-xs font-medium text-left">
-              
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-700 mb-0.5">Prénom *</label>
-                  <input
-                    type="text"
-                    required
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="Thomas"
-                    className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-950 font-sans"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 mb-0.5">Nom de famille *</label>
-                  <input
-                    type="text"
-                    required
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Dupont"
-                    className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-950 font-sans"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-700 mb-0.5">Nom d'utilisateur d'accès *</label>
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="thomas_dupont"
-                  className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-905 focus:ring-slate-950 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-750 mb-0.5">Choisir un Mot de passe *</label>
-                <input
-                  type="password"
-                  required
-                  value={pwd}
-                  onChange={(e) => setPwd(e.target.value)}
-                  placeholder="Min 6 caractères"
-                  className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-950 font-sans"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-750 mb-0.5">Confirmer le mot de passe *</label>
-                <input
-                  type="password"
-                  required
-                  value={pwdConfirm}
-                  onChange={(e) => setPwdConfirm(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-950 font-sans"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-3 border-t border-slate-50">
-                <button
-                  type="submit"
-                  className="flex-1 py-2 bg-indigo-650 bg-indigo-650 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
-                >
-                  Activer mon compte
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsActivationOpen(false)}
-                  className="px-3.5 py-2 border border-slate-200 text-slate-500 rounded-xl text-xs hover:bg-slate-50 transition cursor-pointer"
-                >
-                  Annuler
-                </button>
-              </div>
-
-            </form>
-
-          </div>
-        </div>
-      )}
 
     </div>
   );

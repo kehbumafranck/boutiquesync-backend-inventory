@@ -11,6 +11,7 @@ import java.util.List;
 
 /**
  * Repository MongoDB pour le journal d'audit.
+ * Les logs sont conservés 5 ans (TTL index sur le champ expiresAt).
  */
 @Repository
 public interface AuditLogRepository extends MongoRepository<AuditLog, String> {
@@ -19,5 +20,9 @@ public interface AuditLogRepository extends MongoRepository<AuditLog, String> {
 
     Page<AuditLog> findByAction(String action, Pageable pageable);
 
+    /** Récupère les logs dans une plage de dates — utilisé par le dashboard. */
     List<AuditLog> findByTimestampBetween(LocalDateTime start, LocalDateTime end);
+
+    /** Liste tous les logs triés par date décroissante. */
+    Page<AuditLog> findAllByOrderByTimestampDesc(Pageable pageable);
 }

@@ -1,6 +1,8 @@
 package com.boutiquesync.config;
 
 import lombok.Data;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 /**
@@ -16,6 +18,9 @@ public class SecurityProperties {
     private Totp totp = new Totp();
     private RateLimit rateLimit = new RateLimit();
 
+    @Value("${SPRING_PROFILES_ACTIVE:dev}")
+    private String profile;
+
     @Data
     public static class Jwt {
         /** Clé secrète pour signer les tokens JWT (min 256 bits) */
@@ -27,7 +32,7 @@ public class SecurityProperties {
         /** Émetteur du token */
         private String issuer = "boutiquesync-api";
         /** Active l'attribut Secure sur les cookies (true en prod / HTTPS, false en dev local) */
-        private boolean cookieSecure = true;
+        private boolean cookieSecure = false;
         /** Politique SameSite pour les cookies ("Lax", "Strict" ou "None") */
         private String cookieSameSite = "Lax";
     }

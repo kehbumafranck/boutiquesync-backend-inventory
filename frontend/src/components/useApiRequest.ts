@@ -215,9 +215,11 @@ function mountInterceptors(): void {
 
       const status = error.response?.status;
 
-      // Pas un 403, ou déjà réessayé, ou endpoint auth → on propage l'erreur
+      // Pas un 401, ou déjà réessayé, ou endpoint auth → on propage l'erreur
+      // 401 = non authentifié (token expiré) → on tente le refresh
+      // 403 = authentifié mais accès refusé (mauvais rôle) → on ne tente PAS le refresh
       if (
-        status !== 403 ||
+        status !== 401 ||
         originalRequest?._retry ||
         isAuthEndpoint(originalRequest?.url)
       ) {

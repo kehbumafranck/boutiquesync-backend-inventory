@@ -34,11 +34,15 @@ public class ProductService {
      * @return Le produit créé
      */
     public Product createProduct(CreateProductRequest request, String userId) {
+        // 1. Correction du bug de vérification d'existence
+    if (productRepository.existsByName(request.name())) {
+        throw new BusinessException("Un produit existe déjà avec ce nom : " + request.name(), request.name());
+    }  
         Product product = Product.builder()
                 .name(request.name())
                 .description(request.description())
                 .barcode(request.barcode())
-                //.categoryId(request.categoryId())
+                .categoryId(request.categoryId())
                 .purchasePrice(request.purchasePrice())
                 .sellingPrice(request.sellingPrice())
                 .vatRate(request.vatRate() != null ? request.vatRate() : new BigDecimal("19.25"))
@@ -52,7 +56,7 @@ public class ProductService {
         product = productRepository.save(product);
 
         auditService.logAction(userId, null, "PRODUCT_CREATE",
-                "PRODUCT", product.getId(), true);
+                "PRODUCT", product.getId(), product.getName(), null, null, true);
 
         log.info("Produit créé: {} ({})", product.getName(), product.getId());
         return product;
@@ -72,7 +76,7 @@ public class ProductService {
         if (request.name() != null) product.setName(request.name());
         if (request.description() != null) product.setDescription(request.description());
         if (request.barcode() != null) product.setBarcode(request.barcode());
-        //if (request.categoryId() != null) product.setCategoryId(request.categoryId());
+        if (request.categoryId() != null) product.setCategoryId(request.categoryId());
         if (request.purchasePrice() != null) product.setPurchasePrice(request.purchasePrice());
         if (request.sellingPrice() != null) product.setSellingPrice(request.sellingPrice());
         if (request.vatRate() != null) product.setVatRate(request.vatRate());
@@ -83,7 +87,7 @@ public class ProductService {
         product = productRepository.save(product);
 
         auditService.logAction(userId, null, "PRODUCT_MODIFY",
-                "PRODUCT", product.getId(), true);
+                "PRODUCT", product.getId(), product.getName(), null, null, true);
 
         return product;
     }
@@ -97,7 +101,7 @@ public class ProductService {
         productRepository.save(product);
 
         auditService.logAction(userId, null, "PRODUCT_DELETE",
-                "PRODUCT", id, true);
+                "PRODUCT", id, product.getName(), null, null, true);
     }
 
     /**
@@ -133,10 +137,10 @@ public class ProductService {
     /**
      * Liste les catégories distinctes.
      */
-    // public List<String> getCategories() {
-    //     return productRepository.findDistinctCategories().stream()
-    //             .map(Product::getCategoryId)
-    //             .distinct()
-    //             .toList();
-    // }
+    public List<String> getCategories() {
+        return productRepository.findDistinctCategories().stream()
+                .map(Product::getCategoryId)
+                .distinct()
+                .toList();
+    }
 }

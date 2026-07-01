@@ -51,6 +51,9 @@ public class StockMovement {
     /** ID de l'utilisateur ayant effectué le mouvement */
     private String performedBy;
 
+    /** Nom de l'utilisateur ayant effectué le mouvement (dénormalisé) */
+    private String performedByName;
+
     /** Note explicative */
     private String note;
 
