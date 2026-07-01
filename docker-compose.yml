@@ -14,22 +14,25 @@ services:
       MONGODB_URI: ${MONGODB_URI}
       JWT_SECRET: ${JWT_SECRET}
       TOTP_KEY: ${TOTP_KEY}
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Lax}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-BoutiqueSync}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4000}
       FRONTEND_EXTRA_URLS: ${FRONTEND_EXTRA_URLS:-}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:4000}
       INVITATION_EXPIRY_HOURS: ${INVITATION_EXPIRY_HOURS:-24}
       SHOP_NAME: ${SHOP_NAME:-Ma Boutique}
       SHOP_ADDRESS: ${SHOP_ADDRESS:-}
       SHOP_PHONE: ${SHOP_PHONE:-}
       SHOP_EMAIL: ${SHOP_EMAIL:-}
       SHOP_VAT_NUMBER: ${SHOP_VAT_NUMBER:-}
+    # Permet au conteneur d'accéder au MongoDB existant sur l'hôte Docker
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
@@ -48,10 +51,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # L'URL de l'API est injectée au moment du build Vite
+        # URL de l'API injectée dans le build Vite
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8085/api}
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      # Port 4000 car le port 3000 est occupé par un autre conteneur sur ce serveur
+      - "${FRONTEND_PORT:-4000}:80"
     depends_on:
       boutiquesync-backend:
         condition: service_healthy
