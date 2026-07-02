@@ -2,11 +2,10 @@ services:
 
   # ── Backend Spring Boot ─────────────────────────────────────────────────────
   boutiquesync-backend:
-    image: boutiquesync-backend:latest
-    container_name: boutiquesync-backend
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: boutiquesync-backend
     ports:
       - "${SERVER_PORT:-8085}:8085"
     environment:
@@ -30,7 +29,7 @@ services:
       SHOP_PHONE: ${SHOP_PHONE:-}
       SHOP_EMAIL: ${SHOP_EMAIL:-}
       SHOP_VAT_NUMBER: ${SHOP_VAT_NUMBER:-}
-    # Permet au conteneur d'accéder au MongoDB existant sur l'hôte Docker
+    # Permet au conteneur d'accéder au MongoDB qui tourne sur l'hôte
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -45,16 +44,13 @@ services:
 
   # ── Frontend React + Nginx ──────────────────────────────────────────────────
   boutiquesync-frontend:
-    image: boutiquesync-frontend:latest
-    container_name: boutiquesync-frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # URL de l'API injectée dans le build Vite
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8085/api}
+    container_name: boutiquesync-frontend
     ports:
-      # Port 4000 car le port 3000 est occupé par un autre conteneur sur ce serveur
       - "${FRONTEND_PORT:-4000}:80"
     depends_on:
       boutiquesync-backend:
