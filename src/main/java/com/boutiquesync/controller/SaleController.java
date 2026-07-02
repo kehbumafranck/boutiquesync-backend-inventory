@@ -61,6 +61,20 @@ public class SaleController {
     }
 
     /**
+     * Liste les ventes de l'employé connecté (ADMIN + EMPLOYEE).
+     * Un EMPLOYEE ne voit que ses propres ventes.
+     */
+    @GetMapping("/my")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EMPLOYEE')")
+    @Operation(summary = "Mes ventes", description = "Retourne les ventes de l'employé connecté.")
+    public ResponseEntity<ApiResponse<PageResponse<Sale>>> getMySales(
+            @AuthenticationPrincipal UserPrincipal principal,
+            Pageable pageable) {
+        Page<Sale> sales = saleService.getSalesByEmployee(principal.id(), pageable);
+        return ResponseEntity.ok(ApiResponse.success("Mes ventes récupérées", PageResponse.from(sales)));
+    }
+
+    /**
      * Récupère une vente par son ID.
      */
     @GetMapping("/{id}")

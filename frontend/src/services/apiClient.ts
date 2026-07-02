@@ -352,10 +352,19 @@ export const boutiqueApi = {
   // ── VENTES ────────────────────────────────────────────────────────────────
 
   sales: {
-    /** Récupère une page de ventes triées par date décroissante. */
-    async list(page = 0, size = 50): Promise<Sale[]> {
+    /** Récupère une page de ventes triées par date décroissante (ADMIN). */
+    async list(page = 0, size = 200): Promise<Sale[]> {
       const { data: envelope } = await axiosInstance.get<ApiEnvelope<any>>(
         url(`/sales?page=${page}&size=${size}&sort=createdAt,desc`),
+      );
+      const content = envelope.data?.content ?? [];
+      return (content as any[]).map(mapBackendSaleToFrontend);
+    },
+
+    /** Récupère les ventes de l'employé connecté (ADMIN + EMPLOYEE). */
+    async listMine(page = 0, size = 200): Promise<Sale[]> {
+      const { data: envelope } = await axiosInstance.get<ApiEnvelope<any>>(
+        url(`/sales/my?page=${page}&size=${size}&sort=createdAt,desc`),
       );
       const content = envelope.data?.content ?? [];
       return (content as any[]).map(mapBackendSaleToFrontend);

@@ -297,7 +297,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       let sales: Sale[] = [];
       try {
-        sales = await boutiqueApi.sales.list(0, 200);
+        // ADMIN : toutes les ventes | EMPLOYEE : seulement ses ventes
+        if (currentUser?.role === "ADMIN") {
+          sales = await boutiqueApi.sales.list(0, 200);
+        } else {
+          sales = await boutiqueApi.sales.listMine(0, 200);
+        }
       } catch (err) {
         console.error("[AppProvider] Impossible de charger les ventes.", err);
       }
@@ -329,13 +334,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       let stockMovements: StockMovement[] = [];
-      try {
-        stockMovements = await boutiqueApi.inventory.getMovements();
-      } catch (err) {
-        console.warn(
-          "[AppProvider] Impossible de charger les mouvements de stock.",
-          err,
-        );
+      // Mouvements de stock réservés à l'ADMIN
+      if (currentUser?.role === "ADMIN") {
+        try {
+          stockMovements = await boutiqueApi.inventory.getMovements();
+        } catch (err) {
+          console.warn(
+            "[AppProvider] Impossible de charger les mouvements de stock.",
+            err,
+          );
+        }
       }
 
       // Dashboard summary — métriques calculées sur toute la BD côté backend
@@ -390,7 +398,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setAppState((prev) => ({ ...prev, dashboardSummary }));
         } else {
           // Employé : recharger ses ventes pour que les métriques soient à jour
-          const sales = await boutiqueApi.sales.list(0, 200);
+          const sales = await boutiqueApi.sales.listMine(0, 200);
           setAppState((prev) => ({ ...prev, sales }));
         }
       } catch {
@@ -601,7 +609,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Recharger les produits ET les ventes depuis le backend immédiatement
       const [products, sales] = await Promise.all([
         boutiqueApi.products.list(0, 200),
-        boutiqueApi.sales.list(0, 200),
+        // ADMIN voit toutes les ventes, EMPLOYEE voit seulement les siennes
+        currentUser?.role === "ADMIN"
+          ? boutiqueApi.sales.list(0, 200)
+          : boutiqueApi.sales.listMine(0, 200),
       ]);
 
       // Rafraîchir le summary dashboard après chaque vente
