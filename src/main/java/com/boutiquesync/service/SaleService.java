@@ -18,7 +18,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -64,7 +63,6 @@ public class SaleService {
      * @param employeeName Nom de l'employé
      * @return La vente créée
      */
-    @Transactional
     public Sale createSale(CreateSaleRequest request, String employeeId, String employeeName) {
         // 1. Valider le stock et construire les items
         List<SaleItem> saleItems = new ArrayList<>();
@@ -183,7 +181,6 @@ public class SaleService {
      * @param cancelledBy ID de l'utilisateur annulant
      * @return La vente annulée
      */
-    @Transactional
     public Sale cancelSale(String saleId, String reason, String cancelledBy) {
         Sale sale = saleRepository.findById(saleId)
                 .orElseThrow(() -> new BusinessException("Vente non trouvée", "SALE_NOT_FOUND"));

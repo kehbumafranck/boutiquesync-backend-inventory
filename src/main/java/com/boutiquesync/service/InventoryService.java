@@ -12,7 +12,6 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,7 +40,6 @@ public class InventoryService {
      * @param performedByName Nom de l'utilisateur (pour affichage)
      * @return Le mouvement de stock créé
      */
-    @Transactional
     @CacheEvict(value = {"dashboard", "stockAlerts"}, allEntries = true)
     public StockMovement adjustStock(String productId, int newQuantity, String note, String performedBy, String performedByName) {
         Product product = productRepository.findById(productId)
@@ -85,7 +83,6 @@ public class InventoryService {
      * @param performedBy ID de l'utilisateur
      * @return Le mouvement de stock créé
      */
-    @Transactional
     public StockMovement addStock(String productId, int quantity, String note, String performedBy) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new BusinessException("Produit non trouvé", "PRODUCT_NOT_FOUND"));

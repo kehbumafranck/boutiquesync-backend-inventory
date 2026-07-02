@@ -11,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -108,7 +107,6 @@ public class EmployeeInvitationService {
     // -------------------------------------------------------
     // ÉTAPE 3 — Employé soumet le formulaire complété
     // -------------------------------------------------------
-    @Transactional
     public User completeRegistration(CompleteEmployeeRegistrationRequest request) {
 
         EmployeeInvitation invitation = findValidInvitation(request.token());
