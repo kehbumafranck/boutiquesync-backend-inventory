@@ -297,7 +297,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       let sales: Sale[] = [];
       try {
-        sales = await boutiqueApi.sales.list(0, 50);
+        sales = await boutiqueApi.sales.list(0, 200);
       } catch (err) {
         console.error("[AppProvider] Impossible de charger les ventes.", err);
       }
@@ -378,21 +378,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [currentUser, apiConfig.baseUrl]);
 
   // ── Polling dashboard toutes les 30 secondes ────────────────────────────
-  // Rafraîchit uniquement les métriques légères (summary) sans recharger
-  // tous les produits/ventes. Actif seulement pour les admins connectés.
+  // Pour ADMIN : rafraîchit le summary (KPIs backend)
+  // Pour EMPLOYEE : rafraîchit la liste des ventes (pour que le dashboard reste à jour)
   useEffect(() => {
-    if (!currentUser || currentUser.role !== "ADMIN") return;
+    if (!currentUser) return;
 
-    const refreshSummary = async () => {
+    const refreshData = async () => {
       try {
-        const dashboardSummary = await boutiqueApi.dashboard.getSummary();
-        setAppState((prev) => ({ ...prev, dashboardSummary }));
+        if (currentUser.role === "ADMIN") {
+          const dashboardSummary = await boutiqueApi.dashboard.getSummary();
+          setAppState((prev) => ({ ...prev, dashboardSummary }));
+        } else {
+          // Employé : recharger ses ventes pour que les métriques soient à jour
+          const sales = await boutiqueApi.sales.list(0, 200);
+          setAppState((prev) => ({ ...prev, sales }));
+        }
       } catch {
-        // silencieux — ne pas déconnecter l'utilisateur pour un polling raté
+        // silencieux
       }
     };
 
-    const intervalId = setInterval(refreshSummary, 30_000); // toutes les 30s
+    const intervalId = setInterval(refreshData, 30_000);
     return () => clearInterval(intervalId);
   }, [currentUser]);
   // ── Moteur d'alertes stock automatiques ─────────────────────────────────
@@ -591,7 +597,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleAddSale = useCallback(async (completedSale: Sale) => {
     try {
       const created = await boutiqueApi.sales.create(completedSale);
-      const products = await boutiqueApi.products.list(0, 50);
+
+      // Recharger les produits ET les ventes depuis le backend immédiatement
+      const [products, sales] = await Promise.all([
+        boutiqueApi.products.list(0, 200),
+        boutiqueApi.sales.list(0, 200),
+      ]);
 
       // Rafraîchir le summary dashboard après chaque vente
       let dashboardSummary: DashboardSummaryDto | null = null;
@@ -602,7 +613,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAppState((prev) => ({
         ...prev,
         products,
-        sales: [...prev.sales, created],
+        sales,  // ← liste fraîche incluant la nouvelle vente avec le bon createdBy
         dashboardSummary: dashboardSummary ?? prev.dashboardSummary,
         financialEntries: [
           ...prev.financialEntries,
@@ -610,7 +621,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ],
       }));
     } catch (err: any) {
-      alert(err.message || "Échec de création de la vente.");
+      alert(err?.response?.data?.message || err.message || "Échec de création de la vente.");
     }
   }, []);
 

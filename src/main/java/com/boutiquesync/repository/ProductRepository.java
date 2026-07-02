@@ -26,11 +26,16 @@ public interface ProductRepository extends MongoRepository<Product, String> {
     @Query("{ 'active': true, '$expr': { '$lte': ['$currentStock', '$alertThreshold'] } }")
     List<Product> findLowStockProducts();
 
+    /** Récupère tous les produits y compris ceux sans champ active (migration) */
+    @Query("{ '$or': [ { 'active': true }, { 'active': { '$exists': false } } ] }")
+    Page<Product> findAllActiveOrLegacy(Pageable pageable);
+
     /** Liste des catégories distinctes */
     @Query(value = "{ 'active': true }", fields = "{ 'categoryId': 1 }")
     List<Product> findDistinctCategories();
 
     List<Product> findByIdIn(List<String> ids);
 
-    boolean existsByName(String name);
+    // Vérifie l'existence seulement parmi les produits actifs
+    boolean existsByNameAndActiveTrue(String name);
 }

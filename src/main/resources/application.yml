@@ -96,7 +96,7 @@ logging:
 
 ---
 # ============================================================
-# Profil PROD — MongoDB replica set, transactions actives
+# Profil PROD — MongoDB standalone (serveur actuel)
 # ============================================================
 spring:
   config:
@@ -105,7 +105,7 @@ spring:
   data:
     mongodb:
       uri: ${MONGODB_URI}        # obligatoire en prod, pas de fallback
-      auto-index-creation: false # géré manuellement en prod
+      auto-index-creation: true  # actif car MongoDB standalone (pas replica set)
 
 logging:
   level:

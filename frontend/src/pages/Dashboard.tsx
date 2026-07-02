@@ -120,6 +120,8 @@ export default function Dashboard({
   const userFullName = currentUser
     ? `${currentUser.firstName} ${currentUser.lastName}`
     : '';
+  // L'email est utilisé comme identifiant dans les ventes (employeeName = email dans SaleController)
+  const userEmail = currentUser?.email ?? '';
   const isEmployee = currentUser?.role === 'EMPLOYEE';
 
   // ── Calculs de dates ──────────────────────────────────────────────────────
@@ -137,7 +139,11 @@ export default function Dashboard({
   );
 
   const personalSales = completedSales.filter(
-    (s) => s.createdBy.toLowerCase() === userFullName.toLowerCase(),
+    (s) =>
+      // Correspondance sur l'email (valeur stockée dans sale.createdBy via SaleController)
+      // ou sur le nom complet (fallback pour les ventes créées localement)
+      s.createdBy.toLowerCase() === userEmail.toLowerCase() ||
+      s.createdBy.toLowerCase() === userFullName.toLowerCase(),
   );
   const personalTodaySales = personalSales.filter((s) =>
     s.createdAt.startsWith(todayStr),
@@ -145,7 +151,9 @@ export default function Dashboard({
   const personalInvoicesCount = personalSales.length;
 
   const personalLogs = auditLogs.filter(
-    (log) => log.performedBy.toLowerCase() === userFullName.toLowerCase(),
+    (log) =>
+      log.performedBy.toLowerCase() === userEmail.toLowerCase() ||
+      log.performedBy.toLowerCase() === userFullName.toLowerCase(),
   );
   const personalActivities =
     personalLogs.length > 0

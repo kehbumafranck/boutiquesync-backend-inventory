@@ -32,7 +32,7 @@ interface PosTerminalProps {
   products: Product[];
   clients: Client[];
   sales: Sale[];
-  onAddSale: (sale: Sale) => void;
+  onAddSale: (sale: Sale) => Promise<void>;  // async : attend la réponse backend
   onCancelSale: (id: string, updatedProducts: Product[]) => void;
   onUpdateProductQuantities: (updatedProducts: Product[]) => void;
   onAddAuditLog: (action: string, module: 'POS' | 'FINANCE' | 'STOCK', performedBy: string, details: string, severity: 'INFO' | 'WARNING' | 'CRITICAL') => void;
@@ -191,33 +191,20 @@ export default function PosTerminal({
   const { itemsWithTotals, subTotal, discountAmount, taxAmount, total } = computeCartTotals();
 
   // TERMINER LA VENTE TRIGGER
-  const handleFinalizeSale = () => {
+  const [isFinalizingSale, setIsFinalizingSale] = useState(false);
+
+  const handleFinalizeSale = async () => {
     if (cartItems.length === 0) {
       alert("Votre panier d'achats est vide.");
       return;
     }
+    if (isFinalizingSale) return; // empêche le double clic
 
     const selectedClient = clients.find(c => c.id === selectedClientId);
     const clientName = selectedClient ? selectedClient.name : "Passager Éphémère";
 
-    // Deduct stock quantities from state
-    const nextProducts = products.map(prod => {
-      const soldItem = cartItems.find(item => item.productId === prod.id);
-      if (soldItem) {
-        return {
-          ...prod,
-          quantity: Math.max(0, prod.quantity - soldItem.quantity)
-        };
-      }
-      return prod;
-    });
-
-    onUpdateProductQuantities(nextProducts);
-
-    // Save sale object
-    const finalSaleId = "VEN-2026-0" + (sales.length + 1);
     const completedSale: Sale = {
-      id: finalSaleId,
+      id: `temp-${Date.now()}`, // ID temporaire, remplacé par l'ID MongoDB après l'appel API
       clientName,
       clientId: selectedClient?.id,
       items: itemsWithTotals,
@@ -231,27 +218,33 @@ export default function PosTerminal({
       status: 'COMPLETED'
     };
 
-    onAddSale(completedSale);
+    setIsFinalizingSale(true);
+    try {
+      // Appel API — attend la vraie réponse du backend avant de continuer
+      await onAddSale(completedSale);
 
-    // Write audit log entry
-    onAddAuditLog(
-      'Vente finalisée',
-      'POS',
-      operatorName,
-      `Vente ${finalSaleId} complétée par ${operatorName} (${clientName}). Total: ${total.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA. Paiement: ${paymentMethod}`,
-      'INFO'
-    );
+      // Fidélité client (local seulement)
+      if (selectedClient && total > 50) {
+        const addedPoints = Math.floor(total / 50) * 10;
+        selectedClient.loyaltyPoints += addedPoints;
+        completedSale.clientName += ` (+${addedPoints} pts)`;
+      }
 
-    // If client had registered loyalty account, gain points (10 pt per 50 FCFA spent)
-    if (selectedClient && total > 50) {
-      const addedPoints = Math.floor(total / 50) * 10;
-      selectedClient.loyaltyPoints += addedPoints;
-      completedSale.clientName += ` (+${addedPoints} pts Fidélisation)`;
+      onAddAuditLog(
+        'Vente finalisée',
+        'POS',
+        operatorName,
+        `Vente complétée par ${operatorName} (${clientName}). Total: ${total.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA. Paiement: ${paymentMethod}`,
+        'INFO'
+      );
+
+      setJustCompletedSale(completedSale);
+      setCartItems([]); // Vider le panier seulement après succès
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || "Échec de création de la vente.");
+    } finally {
+      setIsFinalizingSale(false);
     }
-
-    // Trigger visual print modal
-    setJustCompletedSale(completedSale);
-    setCartItems([]); // Reset cart
   };
 
   // VOID / CANCEL TRANSACTION (restores properties)
@@ -837,7 +830,7 @@ export default function PosTerminal({
                   id="pos-finalize-sale-btn"
                   type="button"
                   onClick={handleFinalizeSale}
-                  disabled={cartItems.length === 0}
+                  disabled={cartItems.length === 0 || isFinalizingSale}
                   className="flex-1 py-3 px-4 rounded-xl font-extrabold text-xs text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/10 flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <CreditCard className="h-4 w-4" />

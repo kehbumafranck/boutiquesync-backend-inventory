@@ -44,7 +44,7 @@ public class SaleController {
             @Valid @RequestBody CreateSaleRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
 
-        Sale sale = saleService.createSale(request, principal.id(), principal.email());
+        Sale sale = saleService.createSale(request, principal.id(), principal.fullName());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Vente créée avec succès", sale));
     }

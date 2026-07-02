@@ -34,10 +34,9 @@ public class ProductService {
      * @return Le produit créé
      */
     public Product createProduct(CreateProductRequest request, String userId) {
-        // 1. Correction du bug de vérification d'existence
-    if (productRepository.existsByName(request.name())) {
-        throw new BusinessException("Un produit existe déjà avec ce nom : " + request.name(), request.name());
-    }  
+        if (productRepository.existsByNameAndActiveTrue(request.name())) {
+            throw new BusinessException("Un produit existe déjà avec ce nom : " + request.name(), "PRODUCT_NAME_EXISTS");
+        }
         Product product = Product.builder()
                 .name(request.name())
                 .description(request.description())
@@ -122,9 +121,10 @@ public class ProductService {
 
     /**
      * Liste tous les produits actifs avec pagination.
+     * Inclut aussi les anciens produits sans champ 'active' (migration MongoDB).
      */
     public Page<Product> getAllProducts(Pageable pageable) {
-        return productRepository.findByActiveTrue(pageable);
+        return productRepository.findAllActiveOrLegacy(pageable);
     }
 
     /**
